@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Face Landmark Comparator (No-AI) — Alignment + Symmetry</title>
+<style>
+  :root { --fg:#111; --muted:#666; --bg:#fff; --line:#ddd; }
+  body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:var(--fg); background:var(--bg); margin:16px; }
+  h1 { font-size:1.4rem; margin:0 0 8px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  .panel { border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .label { font-weight:600; }
+  .muted { color:var(--muted); }
+  .controls { display:grid; gap:8px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .dot { width:10px; height:10px; border-radius:50%; position:absolute; transform:translate(-50%,-50%); border:2px solid #fff; box-shadow:0 0 0 1px #000; pointer-events:none; }
+  #wrapA,#wrapB { position:relative; display:inline-block; border:1px solid var(--line); border-radius:6px; overflow:hidden; max-width:100%; }
+  canvas { display:block; max-width:100%; height:auto; }
+  select,button,input[type="number"],input[type="text"]{ padding:6px 8px; font-size:14px; }
+  ol { margin:6px 0; padding-left:18px; }
+  .legend { display:grid; grid-template-columns:auto 1fr; gap:6px 10px; align-items:center; }
+  .swatch { width:10px; height:10px; border:1px solid #000; }
+  table { border-collapse:collapse; width:100%; }
+  th,td { border:1px solid var(--line); padding:6px 8px; font-size:14px; text-align:left; vertical-align:top; }
+  th { background:#f7f7f7; }
+  .ok { color:#207227; }
+  .warn { color:#b36b00; }
+  .bad { color:#b00020; }
+  .small { font-size:12px; }
+  .note { background:#fffae6; border:1px solid #f0e0a0; padding:8px; border-radius:6px; }
+  .section-title { margin:12px 0 6px; font-weight:700; }
+</style>
+</head>
+<body>
+  <h1>Face Landmark Comparator (No-AI)</h1>
+  <p class="muted">Place landmarks on both images (Reference vs Sim). Normalize by an anchor and, optionally, align B→A using 3 control points to remove rotation/translation differences. You can also restrict suggestions to <b>symmetry-only</b> (useful for games that enforce symmetrical faces).</p>
+
+  <div class="row">
+    <label>Anchor:
+      <select id="anchorSel">
+        <option value="ipd">Interpupillary Distance (recommended)</option>
+        <option value="face_width">Face Width (gonion↔gonion)</option>
+        <option value="midface_height">Midface Height (brow mid→nose tip)</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="alignChk" checked> Enable 3‑point alignment (align B to A)</label>
+    <span class="muted small">Control points:</span>
+    <select id="cp1"></select>
+    <select id="cp2"></select>
+    <select id="cp3"></select>
+    <label><input type="checkbox" id="symChk"> Symmetry guidance only</label>
+    <button id="exportReportBtn">Export Printable Report</button>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="row">
+        <div class="label">A. Reference (target face)</div>
+        <input type="file" id="imgA" accept="image/*">
+        <label>Scale % <input type="number" id="scaleA" value="100" min="10" max="300"></label>
+        <button id="resetA">Reset A</button>
+        <button id="saveA">Save A</button>
+        <button id="loadA">Load A</button>
+      </div>
+      <div id="wrapA"><canvas id="canA"></canvas></div>
+      <div id="legendA" class="legend small" style="margin-top:6px;"></div>
+    </div>
+    <div class="panel">
+      <div class="row">
+        <div class="label">B. Sim (screenshot)</div>
+        <input type="file" id="imgB" accept="image/*">
+        <label>Scale % <input type="number" id="scaleB" value="100" min="10" max="300"></label>
+        <button id="resetB">Reset B</button>
+        <button id="saveB">Save B</button>
+        <button id="loadB">Load B</button>
+      </div>
+      <div id="wrapB"><canvas id="canB"></canvas></div>
+      <div id="legendB" class="legend small" style="margin-top:6px;"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px;">
+    <div class="section-title">Landmarks</div>
+    <div class="row">
+      <label for="activeLm">Active landmark:</label>
+      <select id="activeLm"></select>
+      <span class="muted small">Click in either image to place the active landmark. Re-place anytime.</span>
+    </div>
+    <ol id="lmList" class="small"></ol>
+    <div class="note small">Tips: Use neutral, front-facing photos. Set pupils first. If using alignment, choose three non-collinear control points (e.g., left/right pupil + nose tip).</div>
+  </div>
+
+  <div class="panel" style="margin-top:16px;">
+    <div class="section-title">Comparison & Guidance</div>
+    <table id="diffTable">
+      <thead>
+        <tr><th>Measurement</th><th>A (target)</th><th>B (sim)</th><th>Δ% (B vs A)</th><th>Guidance</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="small muted">Green: within ~3%. Yellow: 3–8%. Red: &gt;8%.</p>
+  </div>
+
+<script>
+const LANDMARKS = [
+  {id:"left_pupil", label:"Left Pupil Center", color:"#1f77b4"},
+  {id:"right_pupil", label:"Right Pupil Center", color:"#ff7f0e"},
+  {id:"brow_left_inner", label:"Brow: Left Inner", color:"#2ca02c"},
+  {id:"brow_right_inner", label:"Brow: Right Inner", color:"#d62728"},
+  {id:"brow_left_outer", label:"Brow: Left Outer", color:"#9467bd"},
+  {id:"brow_right_outer", label:"Brow: Right Outer", color:"#8c564b"},
+  {id:"nose_tip", label:"Nose Tip", color:"#e377c2"},
+  {id:"nose_left_alar", label:"Nose: Left Alar", color:"#7f7f7f"},
+  {id:"nose_right_alar", label:"Nose: Right Alar", color:"#bcbd22"},
+  {id:"philtrum_top", label:"Philtrum: Top (under septum)", color:"#17becf"},
+  {id:"upper_lip", label:"Upper Lip Vermilion Mid", color:"#393b79"},
+  {id:"lower_lip", label:"Lower Lip Vermilion Mid", color:"#637939"},
+  {id:"mouth_left", label:"Mouth: Left Corner", color:"#8c6d31"},
+  {id:"mouth_right", label:"Mouth: Right Corner", color:"#843c39"},
+  {id:"chin_tip", label:"Chin Tip", color:"#7b4173"},
+  {id:"jaw_left", label:"Jaw: Left Gonion", color:"#3182bd"},
+  {id:"jaw_right", label:"Jaw: Right Gonion", color:"#e6550d"},
+  {id:"hairline_mid", label:"Hairline Mid", color:"#31a354"}
+];
+
+const MEAS = [
+  { key:"ipd", label:"Interpupillary Distance", fn:(p)=>dist(p.left_pupil,p.right_pupil), guide:"eyes_spacing" },
+  { key:"brow_span_inner", label:"Brow Span (inner↔inner)", fn:(p)=>dist(p.brow_left_inner,p.brow_right_inner), guide:"brow_inner" },
+  { key:"brow_span_outer", label:"Brow Span (outer↔outer)", fn:(p)=>dist(p.brow_left_outer,p.brow_right_outer), guide:"brow_outer" },
+  { key:"nose_width", label:"Nose Width (alar↔alar)", fn:(p)=>dist(p.nose_left_alar,p.nose_right_alar), guide:"nose_width" },
+  { key:"philtrum_height", label:"Philtrum Height (septum→upper lip)", fn:(p)=>vDist(p.philtrum_top,p.upper_lip), guide:"philtrum" },
+  { key:"lip_thickness", label:"Lip Thickness (upper→lower mid)", fn:(p)=>vDist(p.upper_lip,p.lower_lip), guide:"lip_thickness" },
+  { key:"mouth_width", label:"Mouth Width (corner↔corner)", fn:(p)=>dist(p.mouth_left,p.mouth_right), guide:"mouth_width" },
+  { key:"chin_height", label:"Chin Height (lower lip→chin tip)", fn:(p)=>vDist(p.lower_lip,p.chin_tip), guide:"chin_height" },
+  { key:"face_width", label:"Face Width (gonion↔gonion)", fn:(p)=>dist(p.jaw_left,p.jaw_right), guide:"face_width" },
+  { key:"upper_face_height", label:"Upper Face Height (hairline→brow inner mid)", fn:(p)=>{ if (!p.hairline_mid||!p.brow_left_inner||!p.brow_right_inner) return null; const browMid=mid(p.brow_left_inner,p.brow_right_inner); return vDist(p.hairline_mid,browMid); }, guide:"upper_face" },
+  { key:"midface_height", label:"Midface Height (brow mid→nose tip)", fn:(p)=>{ if (!p.brow_left_inner||!p.brow_right_inner||!p.nose_tip) return null; const browMid=mid(p.brow_left_inner,p.brow_right_inner); return vDist(browMid,p.nose_tip); }, guide:"midface" },
+  { key:"lower_face_height", label:"Lower Face Height (nose base→chin tip)", fn:(p)=>{ if (!p.nose_left_alar||!p.nose_right_alar||!p.chin_tip) return null; const noseBase=mid(p.nose_left_alar,p.nose_right_alar); return vDist(noseBase,p.chin_tip); }, guide:"lower_face" },
+  { key:"jaw_angle_left", label:"Jaw Angle Left (deg)", fn:(p)=>jawAngle(p.jaw_left,p.chin_tip), guide:"jaw_angle_left", angular:true },
+  { key:"jaw_angle_right", label:"Jaw Angle Right (deg)", fn:(p)=>jawAngle(p.jaw_right,p.chin_tip), guide:"jaw_angle_right", angular:true }
+];
+
+let imgA=new Image(), imgB=new Image();
+let scaleA=100, scaleB=100;
+let pointsA={}, pointsB={};
+let currentLm=LANDMARKS[0].id;
+
+const el=(id)=>document.getElementById(id);
+const canA=el('canA'), canB=el('canB'); const ctxA=canA.getContext('2d'), ctxB=canB.getContext('2d');
+const wrapA=el('wrapA'), wrapB=el('wrapB');
+const lmList=el('lmList'), activeSel=el('activeLm');
+const anchorSel=el('anchorSel'); const alignChk=el('alignChk'); const symChk=el('symChk');
+const cp1=el('cp1'), cp2=el('cp2'), cp3=el('cp3');
+const diffTable=el('diffTable').querySelector('tbody');
+
+function dist(a,b){ if(!a||!b) return null; const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+function vDist(a,b){ if(!a||!b) return null; return Math.abs(a.y-b.y); }
+function mid(a,b){ return {x:(a.x+b.x)/2, y:(a.y+b.y)/2}; }
+function jawAngle(gonion,chin){ if(!gonion||!chin) return null; const dx=chin.x-gonion.x, dy=chin.y-gonion.y; return Math.round((Math.atan2(dy,dx)*180/Math.PI)*10)/10; }
+
+function measureAll(points){ const res={}; for(const m of MEAS){ res[m.key]=m.fn(points); } return res; }
+function normalize(meas, anchorKey){ const out={}, a=meas[anchorKey]; for(const k in meas){ const v=meas[k]; out[k]=(v==null||a==null||a===0)?null:Math.round((v/a)*1000)/1000; } return out; }
+
+function draw(which){
+  if(which==='A'||which==='both'){ if(imgA.src){ const w=Math.round(imgA.width*scaleA/100), h=Math.round(imgA.height*scaleA/100); canA.width=w; canA.height=h; ctxA.clearRect(0,0,w,h); ctxA.drawImage(imgA,0,0,w,h);} renderDots(wrapA,pointsA); }
+  if(which==='B'||which==='both'){ if(imgB.src){ const w=Math.round(imgB.width*scaleB/100), h=Math.round(imgB.height*scaleB/100); canB.width=w; canB.height=h; ctxB.clearRect(0,0,w,h); ctxB.drawImage(imgB,0,0,w,h);} renderDots(wrapB,pointsB); }
+  refreshDiff();
+}
+function renderDots(wrap, points){ wrap.querySelectorAll('.dot').forEach(d=>d.remove()); LANDMARKS.forEach(lm=>{ const p=points[lm.id]; if(!p) return; const d=document.createElement('div'); d.className='dot'; d.style.left=p.x+'px'; d.style.top=p.y+'px'; d.style.background=lm.color; wrap.appendChild(d); }); }
+
+function buildLegend(id){ const cont=el(id); cont.innerHTML=''; LANDMARKS.forEach(lm=>{ const sw=document.createElement('div'); sw.className='swatch'; sw.style.background=lm.color; const lab=document.createElement('div'); lab.textContent=lm.label; cont.appendChild(sw); cont.appendChild(lab); }); }
+function buildLmList(){ lmList.innerHTML=''; LANDMARKS.forEach((lm)=>{ const li=document.createElement('li'); li.innerHTML=`<span class="label">${lm.label}</span> <span class="muted">(${lm.id})</span>`; lmList.appendChild(li); }); activeSel.innerHTML=''; LANDMARKS.forEach(lm=>{ const o=document.createElement('option'); o.value=lm.id; o.textContent=lm.label; if(lm.id===currentLm) o.selected=true; activeSel.appendChild(o); }); [cp1,cp2,cp3].forEach((sel)=>{ sel.innerHTML=''; LANDMARKS.forEach(lm=>{ const o=document.createElement('option'); o.value=lm.id; o.textContent=lm.label; sel.appendChild(o); }); }); cp1.value='left_pupil'; cp2.value='right_pupil'; cp3.value='nose_tip'; }
+activeSel.addEventListener('change', ()=>{ currentLm=activeSel.value; });
+
+wrapA.addEventListener('click',(e)=>{ if(!imgA.src) return; const r=canA.getBoundingClientRect(); pointsA[currentLm]={x:e.clientX-r.left,y:e.clientY-r.top}; draw('A'); });
+wrapB.addEventListener('click',(e)=>{ if(!imgB.src) return; const r=canB.getBoundingClientRect(); pointsB[currentLm]={x:e.clientX-r.left,y:e.clientY-r.top}; draw('B'); });
+
+el('imgA').addEventListener('change',(e)=>{ const f=e.target.files[0]; if(!f) return; imgA.onload=()=>draw('A'); imgA.src=URL.createObjectURL(f); });
+el('imgB').addEventListener('change',(e)=>{ const f=e.target.files[0]; if(!f) return; imgB.onload=()=>draw('B'); imgB.src=URL.createObjectURL(f); });
+el('scaleA').addEventListener('input',()=>{ scaleA=clamp(parseInt(el('scaleA').value||'100',10),10,300); draw('A'); });
+el('scaleB').addEventListener('input',()=>{ scaleB=clamp(parseInt(el('scaleB').value||'100',10),10,300); draw('B'); });
+el('resetA').addEventListener('click',()=>{ pointsA={}; draw('A'); });
+el('resetB').addEventListener('click',()=>{ pointsB={}; draw('B'); });
+
+el('saveA').addEventListener('click',()=>downloadJSON({points:pointsA},'landmarks_A.json'));
+el('saveB').addEventListener('click',()=>downloadJSON({points:pointsB},'landmarks_B.json'));
+el('loadA').addEventListener('click',()=>pickFileJSON((obj)=>{ if(obj && obj.points){ pointsA=obj.points; draw('A'); } }));
+el('loadB').addEventListener('click',()=>pickFileJSON((obj)=>{ if(obj && obj.points){ pointsB=obj.points; draw('B'); } }));
+
+[anchorSel,alignChk,cp1,cp2,cp3,symChk].forEach(n=>n.addEventListener('change',refreshDiff));
+
+function refreshDiff(){
+  let bPointsUsed = {...pointsB};
+  if (alignChk.checked) {
+    const ids = [cp1.value, cp2.value, cp3.value];
+    if (ids.every(id => pointsA[id] && pointsB[id])) {
+      const T = solveSimilarity(
+        [pointsB[ids[0]], pointsB[ids[1]], pointsB[ids[2]]],
+        [pointsA[ids[0]], pointsA[ids[1]], pointsA[ids[2]]]
+      );
+      if (T) bPointsUsed = transformAll(pointsB, T);
+    }
+  }
+  const a = measureAll(pointsA);
+  const b = measureAll(bPointsUsed);
+
+  const anchor = anchorSel.value;
+  const an = normalize(a, anchor);
+  const bn = normalize(b, anchor);
+
+  diffTable.innerHTML='';
+
+  // If symmetry-only, average left/right angles for reporting/guidance.
+  let jawA = avgAngles(a.jaw_angle_left, a.jaw_angle_right);
+  let jawB = avgAngles(b.jaw_angle_left, b.jaw_angle_right);
+
+  for(const m of MEAS){
+    let A = m.angular ? (m.key.startsWith('jaw_angle') && symChk.checked ? jawA : a[m.key]) : an[m.key];
+    let B = m.angular ? (m.key.startsWith('jaw_angle') && symChk.checked ? jawB : b[m.key]) : bn[m.key];
+
+    const row = document.createElement('tr');
+    const delta = (A!=null && B!=null) ? ((B - A) / A * 100) : null;
+    row.innerHTML = `
+      <td>${m.label}${(symChk.checked && m.key.includes('jaw_angle'))?' (symm.)':''}</td>
+      <td>${fmtVal(A, m.angular)}</td>
+      <td>${fmtVal(B, m.angular)}</td>
+      <td>${fmtDelta(delta)}</td>
+      <td>${buildGuidance(m, A, B, delta, symChk.checked)}</td>
+    `;
+    diffTable.appendChild(row);
+  }
+}
+
+function buildGuidance(m, A, B, delta, symOnly){
+  if(A==null || B==null) return '<span class="muted">Place required landmarks</span>';
+  const pct = Math.abs(delta).toFixed(1) + '%';
+  const dirMore = delta>0; // B > A
+  switch(m.guide){
+    case 'eyes_spacing': return dirMore ? `Bring eyes ${pct} closer.` : `Space eyes ${pct} farther.`;
+    case 'brow_inner':   return dirMore ? `Increase inner brow span by ${pct}.` : `Decrease inner brow span by ${pct}.`;
+    case 'brow_outer':   return dirMore ? `Increase outer brow span by ${pct}.` : `Decrease outer brow span by ${pct}.`;
+    case 'nose_width':   return dirMore ? `Narrow nose by ${pct}.` : `Widen nose by ${pct}.`;
+    case 'philtrum':     return dirMore ? `Shorten philtrum by ${pct}.` : `Lengthen philtrum by ${pct}.`;
+    case 'lip_thickness':return dirMore ? `Reduce lip thickness by ${pct}.` : `Increase lip thickness by ${pct}.`;
+    case 'mouth_width':  return dirMore ? `Narrow mouth by ${pct}.` : `Widen mouth by ${pct}.`;
+    case 'chin_height':  return dirMore ? `Reduce chin height by ${pct}.` : `Increase chin height by ${pct}.`;
+    case 'face_width':   return dirMore ? `Reduce jaw width by ${pct}.` : `Increase jaw width by ${pct}.`;
+    case 'upper_face':   return dirMore ? `Lower hairline/raise brows by ${pct}.` : `Raise hairline/lower brows by ${pct}.`;
+    case 'midface':      return dirMore ? `Shorten midface by ${pct}.` : `Lengthen midface by ${pct}.`;
+    case 'lower_face':   return dirMore ? `Shorten lower face by ${pct}.` : `Lengthen lower face by ${pct}.`;
+    case 'jaw_angle_left':
+    case 'jaw_angle_right':
+      if (symOnly) {
+        return (B>A) ? `Increase jaw angle by ${(B-A).toFixed(1)}°.` : `Decrease jaw angle by ${(A-B).toFixed(1)}°.`;
+      } else {
+        const side = m.guide.endsWith('left')?'left':'right';
+        return (B>A) ? `Increase ${side} jaw angle by ${(B-A).toFixed(1)}°.` : `Decrease ${side} jaw angle by ${(A-B).toFixed(1)}°.`;
+      }
+    default: return '';
+  }
+}
+
+function avgAngles(a,b){ if(a==null && b==null) return null; if(a==null) return b; if(b==null) return a; return (a+b)/2; }
+function fmtVal(v, angular){ if(v==null) return '—'; return angular ? v.toFixed(1)+'°' : v.toFixed(3); }
+function fmtDelta(d){ if(d==null||!isFinite(d)) return '—'; const a=Math.abs(d); const cls=a<=3?'ok':(a<=8?'warn':'bad'); const s=(d>=0?'+':'')+d.toFixed(1)+'%'; return `<span class="${cls}">${s}</span>`; }
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+function downloadJSON(obj, filename){ const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); }
+function pickFileJSON(cb){ const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange=()=>{ const f=inp.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ cb(JSON.parse(r.result)); }catch(e){ alert('Invalid JSON'); } }; r.readAsText(f); }; inp.click(); }
+
+// --- Similarity transform (solve a,b,tx,ty where x' = a x - b y + tx ; y' = b x + a y + ty) ---
+function solveSimilarity(Bpts, Apts){
+  // Build linear system M * u = Y, u=[a,b,tx,ty]^T
+  const M = [], Y = [];
+  for(let i=0;i<3;i++){
+    const xb=Bpts[i].x, yb=Bpts[i].y, xa=Apts[i].x, ya=Apts[i].y;
+    M.push([xb, -yb, 1, 0]); Y.push(xa);
+    M.push([yb,  xb, 0, 1]); Y.push(ya);
+  }
+  const MT = transpose(M);
+  const MTM = matMul(MT, M);
+  const MTY = matVec(MT, Y);
+  const inv = inv4(MTM);
+  if(!inv) return null;
+  const u = matVec(inv, MTY);
+  return {a:u[0], b:u[1], tx:u[2], ty:u[3]};
+}
+function transformPoint(p, T){ return { x: T.a*p.x - T.b*p.y + T.tx, y: T.b*p.x + T.a*p.y + T.ty }; }
+function transformAll(points, T){ const out={}; for(const k in points){ out[k]=transformPoint(points[k], T); } return out; }
+
+// --- Small linear algebra helpers ---
+function transpose(A){ const r=A.length,c=A[0].length; const AT=Array.from({length:c},()=>Array(r).fill(0)); for(let i=0;i<r;i++){ for(let j=0;j<c;j++){ AT[j][i]=A[i][j]; } } return AT; }
+function matMul(A,B){ const r=A.length, c=B[0].length, n=B.length; const R=Array.from({length:r},()=>Array(c).fill(0)); for(let i=0;i<r;i++){ for(let j=0;j<c;j++){ let s=0; for(let k=0;k<n;k++){ s+=A[i][k]*B[k][j]; } R[i][j]=s; } } return R; }
+function matVec(A,v){ const r=A.length, c=A[0].length; const out=Array(r).fill(0); for(let i=0;i<r;i++){ let s=0; for(let j=0;j<c;j++){ s+=A[i][j]*v[j]; } out[i]=s; } return out; }
+function inv4(A){
+  // 4x4 matrix inverse via Gaussian elimination
+  const n=4;
+  // Build augmented [A | I]
+  const M = Array.from({length:n},(_,i)=>[...A[i], ...(function(){const e=Array(n).fill(0); e[i]=1; return e;})()]);
+  for(let col=0; col<n; col++){
+    // find pivot
+    let pivot=col; for(let r=col+1;r<n;r++){ if(Math.abs(M[r][col])>Math.abs(M[pivot][col])) pivot=r; }
+    const pv=M[pivot][col]; if(Math.abs(pv)<1e-8) return null;
+    // swap
+    if(pivot!==col){ const tmp=M[pivot]; M[pivot]=M[col]; M[col]=tmp; }
+    // normalize
+    for(let j=0;j<2*n;j++) M[col][j]/=M[col][col];
+    // eliminate others
+    for(let r=0;r<n;r++){ if(r===col) continue; const f=M[r][col]; for(let j=0;j<2*n;j++){ M[r][j]-=f*M[col][j]; } }
+  }
+  // Extract right half
+  const inv=Array.from({length:n},()=>Array(n).fill(0));
+  for(let i=0;i<n;i++){ for(let j=0;j<n;j++){ inv[i][j]=M[i][j+n]; } }
+  return inv;
+}
+
+// Export printable report
+document.getElementById('exportReportBtn').addEventListener('click', ()=>{
+  // Use current alignment & symmetry settings
+  let bPointsUsed = {...pointsB};
+  if (alignChk.checked) {
+    const ids=[cp1.value,cp2.value,cp3.value];
+    if(ids.every(id=>pointsA[id]&&pointsB[id])){
+      const T=solveSimilarity([pointsB[ids[0]],pointsB[ids[1]],pointsB[ids[2]]],[pointsA[ids[0]],pointsA[ids[1]],pointsA[ids[2]]]);
+      if(T) bPointsUsed=transformAll(pointsB,T);
+    }
+  }
+  const a=measureAll(pointsA), b=measureAll(bPointsUsed);
+  const anchor=anchorSel.value; const an=normalize(a,anchor), bn=normalize(b,anchor);
+
+  let jawA=avgAngles(a.jaw_angle_left,a.jaw_angle_right);
+  let jawB=avgAngles(b.jaw_angle_left,b.jaw_angle_right);
+
+  const rows = MEAS.map(m=>{
+    let A = m.angular ? (m.key.includes('jaw_angle') && symChk.checked ? jawA : a[m.key]) : an[m.key];
+    let B = m.angular ? (m.key.includes('jaw_angle') && symChk.checked ? jawB : b[m.key]) : bn[m.key];
+    const delta = (A!=null && B!=null) ? ( (B - A) / A * 100 ) : null;
+    return `<tr>
+      <td>${m.label}${(symChk.checked && m.key.includes('jaw_angle'))?' (symm.)':''}</td>
+      <td>${A==null?'—':(m.angular?A.toFixed(1)+'°':A.toFixed(3))}</td>
+      <td>${B==null?'—':(m.angular?B.toFixed(1)+'°':B.toFixed(3))}</td>
+      <td>${delta==null?'—':(delta>=0?'+':'')+delta.toFixed(1)+'%'}</td>
+      <td>${buildGuidance(m, A, B, delta, symChk.checked)}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Face Comparison Report</title>
+  <style>body{font-family:system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding:24px;}
+  table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ccc;padding:8px;font-size:14px;text-align:left;}
+  th{background:#f7f7f7;}</style></head><body>
+  <h2>Face Comparison Report</h2>
+  <p>Anchor: ${anchor} • Alignment: ${alignChk.checked?'ON':'OFF'} • Symmetry-only: ${symChk.checked?'ON':'OFF'}</p>
+  <table><thead><tr><th>Measurement</th><th>A (target)</th><th>B (sim)</th><th>Δ% (B vs A)</th><th>Guidance</th></tr></thead><tbody>${rows}</tbody></table>
+  <p style="color:#666;font-size:12px">Normalized values are dimensionless ratios using the chosen anchor. 3‑point alignment reduces rotation/translation differences by solving a similarity transform from B→A using your chosen control points.</p>
+  </body></html>`;
+  const blob = new Blob([html],{type:'text/html'});
+  const aEl=document.createElement('a'); aEl.href=URL.createObjectURL(blob); aEl.download='face_comparison_report.html'; aEl.click();
+});
+
+function build(){ buildLegend('legendA'); buildLegend('legendB'); buildLmList(); draw('both'); }
+build();
+</script>
+</body>
+</html>
