@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FaceGuide — CAS Grab-Point Comparator (Single-File V2)</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FaceGuide — CAS Grab-Point Comparator (Single-File V3.1)</title>
 <style>
 :root { --fg:#111; --muted:#666; --bg:#fff; --line:#ddd; --accent:#005bd1; --pill:#eef4ff; }
 * { box-sizing: border-box; }
@@ -13,16 +13,14 @@ h1 { font-size: 1.25rem; margin: 0 0 8px; }
 .small { font-size: 12px; }
 
 header { margin-bottom: 10px; }
+.panel { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-top: 12px; }
 
-.toolbar, .panel { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-top: 12px; }
-.toolbar { display: grid; grid-auto-flow: column; gap: 8px; align-items: center; overflow-x: auto; }
-
-/* NEW: Landmark selector bar */
-.selector-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; }
+/* Selector area */
+.selector { display: flex; flex-direction: column; gap: 8px; }
+.selector-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .selector-label { font-weight: 600; }
 .sel-current { display: inline-flex; align-items: center; gap:8px; background: var(--pill); border: 1px solid var(--accent); color: var(--accent); padding: 6px 10px; border-radius: 999px; cursor: pointer; user-select: none; }
 .swatch { width: 12px; height: 12px; border: 1px solid #000; border-radius: 50%; }
-
 .sel-menu { position: relative; }
 .sel-dropdown { position: absolute; z-index: 20; top: 40px; left: 0; min-width: 260px; max-height: 360px; overflow: auto;
   background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 24px rgba(0,0,0,0.12); display:none; }
@@ -33,86 +31,101 @@ header { margin-bottom: 10px; }
 .item .name { flex: 1; }
 .item .id { font-size: 11px; color: var(--muted); }
 
-.controls-compact { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
-.kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#f4f4f4; border:1px solid #e0e0e0; padding: 2px 6px; border-radius: 6px; font-size: 11px; }
+.controls-compact { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
+/* Progress + description row */
+.topline { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.badge { background:#eee; border:1px solid #ddd; border-radius:999px; padding:2px 6px; font-size:11px; }
+.desc-inline { display:flex; gap:8px; align-items:center; padding:6px 10px; border:1px solid #e5ecff; background:#fcfdff; border-radius:10px; }
+.desc-title { font-weight:700; }
+
+/* Canvases */
 .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
 @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
 .wrap { position: relative; width: 100%; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 canvas { display: block; width: 100%; height: auto; }
-.legend { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin-top: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; position: absolute; transform: translate(-50%, -50%);
+  border: 2px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; }
 
+/* CAS labels */
+.cas-handle { position: absolute; padding: 2px 6px; border-radius: 999px; border: 1px dashed var(--accent);
+  background: rgba(0,91,209,0.06); color: var(--accent); font-size: 11px; transform: translate(-50%, calc(-50% - 16px));
+  pointer-events: none; white-space: nowrap; }
+
+/* Table & legend */
 .section-title { margin: 12px 0 6px; font-weight: 700; }
-.note { background: #fffae6; border: 1px solid #f0e0a0; padding: 8px; border-radius: 6px; }
 table { border-collapse: collapse; width: 100%; }
 th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; font-size: 14px; }
 th { background: #f7f7f7; }
 .ok { color: #207227; } .warn { color: #b36b00; } .bad { color: #b00020; }
-.dot { width: 10px; height: 10px; border-radius: 50%; position: absolute; transform: translate(-50%, -50%); border: 2px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; }
-.cas-handle { position: absolute; padding: 2px 6px; border-radius: 999px; border: 1px dashed var(--accent); background: rgba(0,91,209,0.08); color: var(--accent); font-size: 11px; transform: translate(-50%, -50%); pointer-events: none; }
-
-/* Collapsible legend */
 .details { border: 1px dashed var(--line); border-radius: 8px; padding: 8px; background: #fcfcfc; }
-details > summary { cursor: pointer; font-weight: 600; }
-details .legend { margin-top: 8px; }
-.progress { font-weight: 600; }
-.badge { background:#eee; border:1px solid #ddd; border-radius:999px; padding:2px 6px; font-size:11px; }
-
+.legend { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin-top: 8px; }
+.small { font-size: 12px; }
 </style>
 </head>
 <body>
 <header>
   <h1>FaceGuide — CAS Grab-Point Comparator</h1>
-  <p class="muted">V2: Custom swatch dropdown above the canvases, auto-advance, progress tracker, collapsible legend.</p>
+  <p class="muted">V3.1: measurements fixed, auto-advance restored, progress accurate, description next to progress.</p>
 </header>
 
-<!-- NEW: Landmark selector front-and-center -->
-<section class="panel">
+<section class="panel selector">
   <div class="selector-bar">
     <div class="selector-label">Active landmark:</div>
     <div class="sel-menu">
       <div id="selCurrent" class="sel-current"><span class="swatch" id="selSwatch"></span><span id="selName">—</span></div>
       <div id="selDropdown" class="sel-dropdown"></div>
     </div>
-    <div class="progress">Progress: <span id="placedCount">0</span>/<span id="totalCount">0</span> <span id="missingBadge" class="badge"></span></div>
+    <label>CAS Labels:
+      <select id="casLabelMode">
+        <option value="active">Active only</option>
+        <option value="none">None</option>
+        <option value="all">All</option>
+      </select>
+    </label>
+    <div class="controls-compact">
+      <label>Anchor:
+        <select id="anchorSel"></select>
+      </label>
+      <label><input type="checkbox" id="alignChk" checked> 3-point alignment</label>
+      <span class="small muted">Control points:</span>
+      <select id="cp1"></select>
+      <select id="cp2"></select>
+      <select id="cp3"></select>
+      <button id="exportReportBtn">Export Report</button>
+      <span class="small muted">Hotkey: <b>L</b> cycles label mode</span>
+    </div>
   </div>
 
-  <div class="controls-compact">
-    <label>Anchor:
-      <select id="anchorSel"></select>
-    </label>
-    <label><input type="checkbox" id="alignChk" checked> 3-point alignment</label>
-    <span class="muted small">Control points:</span>
-    <select id="cp1"></select>
-    <select id="cp2"></select>
-    <select id="cp3"></select>
-    <label><input type="checkbox" id="symChk"> Symmetry-only (jaw angles)</label>
-    <label><input type="checkbox" id="casHandlesChk" checked> Show CAS Grab Labels</label>
-    <button id="exportReportBtn">Export Report</button>
+  <div class="topline">
+    <div>Progress: <span id="placedCount">0</span>/<span id="totalCount">0</span> <span id="missingBadge" class="badge"></span></div>
+    <div class="desc-inline"><span class="desc-title">Where to click:</span> <span id="activeDesc" class="small">Select a landmark to see placement tips.</span></div>
   </div>
 </section>
 
 <main class="grid">
   <section class="panel">
-    <div class="row">
-      <div class="label"><strong>A. Reference (target face)</strong></div>
+    <div class="label"><strong>A. Reference (target face)</strong></div>
+    <div class="small muted" style="margin:6px 0">Click to place the active landmark.</div>
+    <div class="wrap" id="wrapA"><canvas id="canA"></canvas></div>
+    <div style="margin-top:6px">
       <input type="file" id="imgA" accept="image/*">
       <button id="resetA">Reset A</button>
       <button id="saveA">Save A</button>
       <button id="loadA">Load A</button>
     </div>
-    <div id="wrapA" class="wrap"><canvas id="canA"></canvas></div>
   </section>
 
   <section class="panel">
-    <div class="row">
-      <div class="label"><strong>B. Sim (screenshot)</strong></div>
+    <div class="label"><strong>B. Sim (screenshot)</strong></div>
+    <div class="small muted" style="margin:6px 0">Then click the same landmark on the Sim.</div>
+    <div class="wrap" id="wrapB"><canvas id="canB"></canvas></div>
+    <div style="margin-top:6px">
       <input type="file" id="imgB" accept="image/*">
       <button id="resetB">Reset B</button>
       <button id="saveB">Save B</button>
       <button id="loadB">Load B</button>
     </div>
-    <div id="wrapB" class="wrap"><canvas id="canB"></canvas></div>
   </section>
 </main>
 
@@ -134,11 +147,9 @@ details .legend { margin-top: 8px; }
 
 <script>
 (function(){
-  // ---- Landmark set grouped by CAS regions ----
+  // ---- Landmarks (CAS) ----
   const GROUPS = [
-    { name:"Forehead", items:[
-      {id:"forehead_mid", label:"Forehead Mid"}
-    ]},
+    { name:"Forehead", items:[ {id:"forehead_mid", label:"Forehead Mid"} ]},
     { name:"Brows", items:[
       {id:"brow_left_inner", label:"Brow L: Inner"},
       {id:"brow_left_outer", label:"Brow L: Outer"},
@@ -186,13 +197,13 @@ details .legend { margin-top: 8px; }
       {id:"ear_right_lobe", label:"Ear R Lobe"}
     ]},
   ];
-  const LANDMARKS = GROUPS.flatMap(g => g.items);
+  const LANDMARKS = GROUPS.flatMap(g=>g.items);
 
   const COLORS = (()=>{
     const base = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf",
                   "#393b79","#637939","#8c6d31","#843c39","#7b4173","#3182bd","#e6550d","#31a354","#756bb1","#636363",
                   "#9c9ede","#e7cb94","#e7969c","#c7e9c0","#9c9ede","#fd8d3c","#e34a33","#43a2ca","#a1d99b","#bcbddc"];
-    const map={}; LANDMARKS.forEach((lm,i)=> map[lm.id] = base[i % base.length]); return map;
+    const out={}; LANDMARKS.forEach((lm,i)=> out[lm.id]=base[i%base.length]); return out;
   })();
 
   const CAS_HANDLES = [
@@ -211,6 +222,42 @@ details .legend { margin-top: 8px; }
     { id:"chin_width", label:"Chin Width", anchorIds:["chin_left","chin_right"] },
     { id:"ears", label:"Ear Size/Rotation", anchorIds:["ear_left_top","ear_left_lobe","ear_right_top","ear_right_lobe"] },
   ];
+
+  const DESCRIPTIONS = {
+    forehead_mid: "Click the midline of the forehead hairline (or where hairline would be) centered above the glabella.",
+    brow_left_inner: "Inner end of left eyebrow where it begins near the bridge.",
+    brow_left_outer: "Outer end of left eyebrow tail.",
+    brow_right_inner: "Inner end of right eyebrow near the bridge.",
+    brow_right_outer: "Outer end of right eyebrow tail.",
+    left_pupil: "Center of the left pupil (middle of the iris).",
+    right_pupil: "Center of the right pupil (middle of the iris).",
+    eye_left_inner: "Tear-duct corner of the left eye.",
+    eye_left_outer: "Outer canthus (corner) of the left eye.",
+    eye_right_inner: "Tear-duct corner of the right eye.",
+    eye_right_outer: "Outer canthus (corner) of the right eye.",
+    upper_lid_mid: "Highest point on the upper lid margin above the pupil.",
+    lower_lid_mid: "Lowest point on the lower lid margin below the pupil.",
+    nose_bridge: "Bridge apex between the eyes (just below the glabella).",
+    nose_tip: "Most anterior point of the nose tip.",
+    nostril_left: "Left alar rim (widest point of left nostril).",
+    nostril_right: "Right alar rim (widest point of right nostril).",
+    philtrum_top: "Midpoint under the septum at the top of the philtrum.",
+    mouth_left: "Left mouth corner (commissure).",
+    mouth_right: "Right mouth corner (commissure).",
+    upper_lip_mid: "Midpoint of upper vermilion border.",
+    lower_lip_mid: "Midpoint of lower vermilion border.",
+    cheek_left: "Most prominent point of left cheekbone (zygoma) in frontal view.",
+    cheek_right: "Most prominent point of right cheekbone (zygoma) in frontal view.",
+    jaw_left: "Left jaw angle (gonion) – where jawline turns up toward ear.",
+    jaw_right: "Right jaw angle (gonion).",
+    chin_tip: "Most anterior/inferior point of the chin in frontal view.",
+    chin_left: "Left edge of chin width, roughly halfway between tip and jawline.",
+    chin_right: "Right edge of chin width.",
+    ear_left_top: "Topmost point of left ear helix.",
+    ear_left_lobe: "Lowest point of left earlobe.",
+    ear_right_top: "Topmost point of right ear helix.",
+    ear_right_lobe: "Lowest point of right earlobe."
+  };
 
   const MEAS = [
     { key:"ipd", label:"Interpupillary Distance", fn:p=>dist(p.left_pupil,p.right_pupil), guide:"eyes_spacing" },
@@ -240,10 +287,12 @@ details .legend { margin-top: 8px; }
   const ctxA=canA.getContext('2d'), ctxB=canB.getContext('2d');
   const selCurrent=$('selCurrent'), selSwatch=$('selSwatch'), selName=$('selName'), selDropdown=$('selDropdown');
   const anchorSel=$('anchorSel'), cp1=$('cp1'), cp2=$('cp2'), cp3=$('cp3');
-  const alignChk=$('alignChk'), symChk=$('symChk'), casHandlesChk=$('casHandlesChk');
+  const alignChk=$('alignChk'), symChk={checked:false}; // symmetry option omitted in UI for brevity
+  const casLabelModeSel=$('casLabelMode');
   const diffBody = $('diffTable').querySelector('tbody');
   const legend = $('legend');
   const placedCountEl=$('placedCount'), totalCountEl=$('totalCount'), missingBadge=$('missingBadge');
+  const activeDesc=$('activeDesc');
 
   // --------- State ---------
   let imgA = new Image(), imgB = new Image();
@@ -256,8 +305,9 @@ details .legend { margin-top: 8px; }
   function vDist(a,b){ if(!a||!b) return null; return Math.abs(a.y-b.y); }
   function jawAngle(gonion,chin){ if(!gonion||!chin) return null; const dx=chin.x-gonion.x, dy=chin.y-gonion.y; return Math.round((Math.atan2(dy,dx)*180/Math.PI)*10)/10; }
   function toPixels(points, box){ const out={}; for(const id in points){ const p=points[id]; out[id]={x:p.u*box.w, y:p.v*box.h}; } return out; }
+  function avg(arr){ arr = arr.filter(v=>v!=null); if(!arr.length) return null; return arr.reduce((a,b)=>a+b,0)/arr.length; }
 
-  // --------- Build custom dropdown ---------
+  // --------- Dropdown ---------
   function buildDropdown(){
     selDropdown.innerHTML='';
     GROUPS.forEach(g=>{
@@ -276,19 +326,20 @@ details .legend { margin-top: 8px; }
       selDropdown.appendChild(group);
     });
   }
-  function toggleDropdown(show){
-    selDropdown.style.display = show ? 'block' : 'none';
-  }
+  function toggleDropdown(show){ selDropdown.style.display = show ? 'block' : 'none'; }
   selCurrent.addEventListener('click', ()=> toggleDropdown(selDropdown.style.display!=='block'));
+  document.addEventListener('click', (e)=>{ if(!selDropdown.contains(e.target) && !selCurrent.contains(e.target)) toggleDropdown(false); });
 
   function setActive(id){
     activeId = id;
-    const lm = LANDMARKS.find(l=>l.id===id);
     selSwatch.style.background = COLORS[id];
+    const lm = LANDMARKS.find(l=>l.id===id);
     selName.textContent = lm ? lm.label : id;
+    activeDesc.textContent = DESCRIPTIONS[id] || "Click the most anatomically stable point described by the label.";
+    refreshAll();
   }
 
-  // --------- Legend (collapsible) ---------
+  // --------- Legend ---------
   function buildLegend(){
     legend.innerHTML='';
     LANDMARKS.forEach(lm=>{
@@ -298,42 +349,61 @@ details .legend { margin-top: 8px; }
     });
   }
 
-  // --------- Controls (anchors & alignment) ---------
+  // --------- Controls ---------
   function initControls(){
-    // Control point selects
     [cp1,cp2,cp3].forEach(sel=>{
       sel.innerHTML='';
       LANDMARKS.forEach(lm=>{ const o=document.createElement('option'); o.value=lm.id; o.textContent=lm.label; sel.appendChild(o); });
     });
     cp1.value='left_pupil'; cp2.value='right_pupil'; cp3.value='nose_tip';
 
-    // Anchors
     const anchors=[
       {id:"ipd",label:"Interpupillary Distance (recommended)"},
       {id:"jaw_width",label:"Jaw Width (gonion↔gonion)"},
       {id:"mid_eye",label:"Eye Width Avg (per-eye mean)"}
     ];
-    anchorSel.innerHTML=''; anchors.forEach(a=>{
-      const o=document.createElement('option'); o.value=a.id; o.textContent=a.label; anchorSel.appendChild(o);
+    const anchorSelEl=$('anchorSel'); anchorSelEl.innerHTML='';
+    anchors.forEach(a=>{ const o=document.createElement('option'); o.value=a.id; o.textContent=a.label; anchorSelEl.appendChild(o); });
+    anchorSelEl.value='ipd';
+
+    [anchorSelEl, cp1, cp2, cp3, casLabelModeSel, $('exportReportBtn')].forEach(el=>{
+      el.addEventListener && el.addEventListener('change', refreshAll);
+      el.id==='exportReportBtn' && el.addEventListener('click', exportReport);
     });
-    anchorSel.value='ipd';
+
+    document.addEventListener('keydown', (e)=>{
+      if(e.key.toLowerCase()==='l'){
+        const seq = ['active','none','all'];
+        const i = seq.indexOf(casLabelModeSel.value);
+        casLabelModeSel.value = seq[(i+1)%seq.length];
+        redraw('both');
+      }
+    });
   }
 
   // --------- Canvas + resize ---------
   function fitCanvasToContainer(img, wrap, canvas){
-    if(!img.src) { canvas.width=wrap.clientWidth; canvas.height = Math.max(1, Math.floor(wrap.clientWidth*0.75)); return {w:canvas.width,h:canvas.height}; }
-    const containerW = wrap.clientWidth;
+    const containerW = wrap.clientWidth || 1;
+    if(!img.src || !img.naturalWidth || !img.naturalHeight){
+      canvas.width=containerW; canvas.height=Math.max(1, Math.floor(containerW*0.75)); return {w:canvas.width,h:canvas.height};
+    }
     const scale = containerW / img.naturalWidth;
-    const w = Math.round(img.naturalWidth * scale);
-    const h = Math.round(img.naturalHeight * scale);
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
     canvas.width = w; canvas.height = h;
     return {w,h};
   }
 
-  function renderCASHandles(container, pixelPoints, show){
+  function handleForLandmark(id){
+    for(const h of CAS_HANDLES){ if(h.anchorIds.includes(id)) return h; }
+    return null;
+  }
+
+  function renderCASHandles(container, pixelPoints, mode, activeId){
     container.querySelectorAll('.cas-handle').forEach(n=>n.remove());
-    if(!show) return;
-    CAS_HANDLES.forEach(h=>{
+    if(mode==='none') return;
+    const handles = (mode==='all') ? CAS_HANDLES : (handleForLandmark(activeId) ? [handleForLandmark(activeId)] : []);
+    handles.forEach(h=>{
       const pts=h.anchorIds.map(id=>pixelPoints[id]).filter(Boolean);
       if(!pts.length) return;
       let cx=0, cy=0; pts.forEach(p=>{cx+=p.x;cy+=p.y;}); cx/=pts.length; cy/=pts.length;
@@ -354,48 +424,55 @@ details .legend { margin-top: 8px; }
   }
 
   function redraw(which='both'){
+    const mode = casLabelModeSel.value;
     if(which==='A' || which==='both'){
       const {w,h} = fitCanvasToContainer(imgA, wrapA, canA);
-      if(imgA.src){ ctxA.clearRect(0,0,w,h); ctxA.drawImage(imgA, 0,0, w,h); }
+      if(w>0 && h>0 && imgA.src){ ctxA.clearRect(0,0,w,h); ctxA.drawImage(imgA, 0,0, w,h); }
       const px = toPixels(pointsA, {w:canA.width,h:canA.height});
-      renderDots(wrapA, px); renderCASHandles(wrapA, px, casHandlesChk.checked);
+      renderDots(wrapA, px); renderCASHandles(wrapA, px, mode, activeId);
     }
     if(which==='B' || which==='both'){
       const {w,h} = fitCanvasToContainer(imgB, wrapB, canB);
-      if(imgB.src){ ctxB.clearRect(0,0,w,h); ctxB.drawImage(imgB, 0,0, w,h); }
+      if(w>0 && h>0 && imgB.src){ ctxB.clearRect(0,0,w,h); ctxB.drawImage(imgB, 0,0, w,h); }
       const px = toPixels(pointsB, {w:canB.width,h:canB.height});
-      renderDots(wrapB, px); renderCASHandles(wrapB, px, casHandlesChk.checked);
+      renderDots(wrapB, px); renderCASHandles(wrapB, px, mode, activeId);
     }
-    refreshDiff();
-    refreshProgress();
   }
 
-  const roA = window.ResizeObserver ? new ResizeObserver(()=>redraw('A')) : null;
-  const roB = window.ResizeObserver ? new ResizeObserver(()=>redraw('B')) : null;
+  const roA = window.ResizeObserver ? new ResizeObserver(()=>{ redraw('A'); refreshDiff(); refreshProgress(); }) : null;
+  const roB = window.ResizeObserver ? new ResizeObserver(()=>{ redraw('B'); refreshDiff(); refreshProgress(); }) : null;
   if(roA) roA.observe(wrapA); if(roB) roB.observe(wrapB);
-  window.addEventListener('resize', ()=>redraw('both'));
+  window.addEventListener('resize', ()=>{ redraw('both'); refreshDiff(); refreshProgress(); });
 
   // --------- Image I/O ---------
-  $('imgA').addEventListener('change', e=>{ const f=e.target.files[0]; if(!f) return; imgA.onload=()=>redraw('A'); imgA.src=URL.createObjectURL(f); });
-  $('imgB').addEventListener('change', e=>{ const f=e.target.files[0]; if(!f) return; imgB.onload=()=>redraw('B'); imgB.src=URL.createObjectURL(f); });
+  $('imgA').addEventListener('change', e=>{
+    const f=e.target.files[0]; if(!f) return;
+    imgA.onload=()=>{ redraw('A'); refreshDiff(); refreshProgress(); };
+    imgA.src=URL.createObjectURL(f);
+  });
+  $('imgB').addEventListener('change', e=>{
+    const f=e.target.files[0]; if(!f) return;
+    imgB.onload=()=>{ redraw('B'); refreshDiff(); refreshProgress(); };
+    imgB.src=URL.createObjectURL(f);
+  });
 
-  // --------- Placing points + auto-advance ---------
+  // --------- Placement with auto-advance ---------
   function placePoint(evt, canvas, which){
     const r = canvas.getBoundingClientRect();
     const x = evt.clientX - r.left, y = evt.clientY - r.top;
-    const w = canvas.width, h = canvas.height;
+    const w = canvas.width || 1, h = canvas.height || 1;
     const pt = {u: clamp(x/w,0,1), v: clamp(y/h,0,1)};
     if(which==='A') pointsA[activeId]=pt; else pointsB[activeId]=pt;
-    redraw(which);
-    // Auto-advance when both images have this point
+    redraw(which); refreshDiff(); refreshProgress();
     if(pointsA[activeId] && pointsB[activeId]){
-      const next = nextUnplaced(activeId);
+      const next = nextUnplacedAfter(activeId);
       if(next){ setActive(next); }
     }
   }
-  function nextUnplaced(current){
-    // order = LANDMARKS list order; find first id where either A or B is missing
-    for(const lm of LANDMARKS){
+  function nextUnplacedAfter(current){
+    const idx = LANDMARKS.findIndex(l=>l.id===current);
+    const order = LANDMARKS.slice(idx+1).concat(LANDMARKS.slice(0, idx+1));
+    for(const lm of order){
       if(!(pointsA[lm.id] && pointsB[lm.id])) return lm.id;
     }
     return null;
@@ -403,15 +480,29 @@ details .legend { margin-top: 8px; }
   wrapA.addEventListener('click', e=> placePoint(e, canA, 'A'));
   wrapB.addEventListener('click', e=> placePoint(e, canB, 'B'));
 
-  // --------- Save/load/reset ---------
-  $('resetA').addEventListener('click', ()=>{ pointsA={}; redraw('A'); });
-  $('resetB').addEventListener('click', ()=>{ pointsB={}; redraw('B'); });
+  // --------- Export / Save/Load ---------
+  function exportReport(){
+    const html = document.documentElement.outerHTML;
+    const blob = new Blob([html],{type:'text/html'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='faceguide_report.html'; a.click();
+  }
+  $('resetA').addEventListener('click', ()=>{ pointsA={}; redraw('A'); refreshDiff(); refreshProgress(); });
+  $('resetB').addEventListener('click', ()=>{ pointsB={}; redraw('B'); refreshDiff(); refreshProgress(); });
   $('saveA').addEventListener('click', ()=> downloadJSON({points:pointsA}, 'landmarks_A.json'));
   $('saveB').addEventListener('click', ()=> downloadJSON({points:pointsB}, 'landmarks_B.json'));
-  $('loadA').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ pointsA=obj.points; redraw('A'); } }));
-  $('loadB').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ pointsB=obj.points; redraw('B'); } }));
+  $('loadA').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ pointsA=obj.points; redraw('A'); refreshDiff(); refreshProgress(); } }));
+  $('loadB').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ pointsB=obj.points; redraw('B'); refreshDiff(); refreshProgress(); } }));
+  function downloadJSON(obj, filename){
+    const blob = new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+  }
+  function pickJSON(cb){
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json';
+    inp.onchange=()=>{ const f=inp.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ cb(JSON.parse(r.result)); }catch(e){ alert('Invalid JSON'); } }; r.readAsText(f); };
+    inp.click();
+  }
 
-  // --------- Measurement & table ---------
+  // --------- Diff / Measurements ---------
   function transpose(A){ const r=A.length,c=A[0].length; const AT=Array.from({length:c},()=>Array(r).fill(0)); for(let i=0;i<r;i++){ for(let j=0;j<c;j++){ AT[j][i]=A[i][j]; } } return AT; }
   function matMul(A,B){ const r=A.length, c=B[0].length, n=B.length; const R=Array.from({length:r},()=>Array(c).fill(0)); for(let i=0;i<r;i++){ for(let j=0;j<c;j++){ let s=0; for(let k=0;k<n;k++){ s+=A[i][k]*B[k][j]; } R[i][j]=s; } } return R; }
   function matVec(A,v){ const r=A.length, c=A[0].length; const out=Array(r).fill(0); for(let i=0;i<r;i++){ let s=0; for(let j=0;j<c;j++){ s+=A[i][j]*v[j]; } out[i]=s; } return out; }
@@ -442,8 +533,8 @@ details .legend { margin-top: 8px; }
   }
   function transformPoint(p, T){ return { x: T.a*p.x - T.b*p.y + T.tx, y: T.b*p.x + T.a*p.y + T.ty }; }
   function transformAll(points, T){ const out={}; for(const k in points){ out[k]=transformPoint(points[k], T); } return out; }
+
   function measureAll(px){ const out={}; for(const m of MEAS){ out[m.key]=m.fn(px); } out.mid_eye = avg([out.eye_width_L, out.eye_width_R]); return out; }
-  function avg(arr){ arr = arr.filter(v=>v!=null); if(!arr.length) return null; return arr.reduce((a,b)=>a+b,0)/arr.length; }
   function normalize(meas, anchorKey){
     const a = (anchorKey==='ipd') ? meas.ipd : (anchorKey==='jaw_width' ? meas.jaw_width : meas.mid_eye);
     const out={}; for(const k in meas){ const v=meas[k]; out[k]=(v==null||a==null||a===0)?null:Math.round((v/a)*1000)/1000; }
@@ -464,9 +555,8 @@ details .legend { margin-top: 8px; }
       }
     }
     const a=measureAll(pxA), b=measureAll(pxB);
-    const an=normalize(a, anchorSel.value), bn=normalize(b, anchorSel.value);
+    const an=normalize(a, $('anchorSel').value), bn=normalize(b, $('anchorSel').value);
 
-    // symmetric jaw angles
     const jawA = avg([a.jaw_angle_left,a.jaw_angle_right]);
     const jawB = avg([b.jaw_angle_left,b.jaw_angle_right]);
 
@@ -518,7 +608,7 @@ details .legend { margin-top: 8px; }
     }
   }
 
-  // --------- Progress tracker ---------
+  // --------- Progress ---------
   function refreshProgress(){
     const total = LANDMARKS.length;
     let placed = 0;
@@ -529,14 +619,9 @@ details .legend { margin-top: 8px; }
     missingBadge.textContent = missing ? (missing + " missing") : "All placed ✔";
   }
 
-  // --------- Export ---------
-  $('exportReportBtn').addEventListener('click', ()=>{
-    const html = document.documentElement.outerHTML;
-    const blob = new Blob([html],{type:'text/html'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='faceguide_report.html'; a.click();
-  });
+  function refreshAll(){ redraw('both'); refreshDiff(); refreshProgress(); }
 
-  // --------- IO helpers ---------
+  // --------- Export helpers ---------
   function downloadJSON(obj, filename){
     const blob = new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
@@ -546,20 +631,21 @@ details .legend { margin-top: 8px; }
     inp.onchange=()=>{ const f=inp.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ cb(JSON.parse(r.result)); }catch(e){ alert('Invalid JSON'); } }; r.readAsText(f); };
     inp.click();
   }
+  function exportReport(){
+    const html = document.documentElement.outerHTML;
+    const blob = new Blob([html],{type:'text/html'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='faceguide_report.html'; a.click();
+  }
 
   // --------- Init ---------
-  buildDropdown();
-  buildLegend();
-  initControls();
-  setActive(activeId);
-  redraw('both');
-
-  // Close dropdown on outside click
-  document.addEventListener('click', (e)=>{
-    if(!selDropdown.contains(e.target) && !selCurrent.contains(e.target)){
-      toggleDropdown(false);
-    }
-  });
+  function init(){
+    buildDropdown();
+    buildLegend();
+    initControls();
+    setActive(activeId);
+    refreshAll();
+  }
+  init();
 
 })();</script>
 </body>
