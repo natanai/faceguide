@@ -3,756 +3,370 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>FaceGuide — CAS Grab-Point Comparator (Single-File V3.1)</title>
+<title>FaceGuide — Overlay Alignment</title>
 <style>
 :root { --fg:#111; --muted:#666; --bg:#fff; --line:#ddd; --accent:#005bd1; --pill:#eef4ff; }
 * { box-sizing: border-box; }
 body { margin: 16px; color: var(--fg); background: var(--bg); font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
-h1 { font-size: 1.25rem; margin: 0 0 8px; }
+header { margin-bottom: 12px; }
+h1 { font-size: 1.25rem; margin: 0 0 6px; }
+h2 { font-size: 1rem; margin: 0 0 6px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.panel { border: 1px solid var(--line); border-radius: 10px; padding: 16px; max-width: 960px; margin: 0 auto; background: #fff; }
+.hero { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0 24px; }
+.hero-card { flex: 1 1 280px; border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: #f7f9ff; }
+.hero-card p { margin: 0 0 12px; font-size: 14px; line-height: 1.45; }
+.cta-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; }
+.cta-btn:hover { text-decoration: none; background: #0046a5; }
+.hero-card .muted { color: var(--muted); margin: 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+.controls label { font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.controls input[type="range"] { width: 140px; }
+.controls .control-value { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.controls-manual { margin-top: -4px; }
+.controls-manual label { min-width: 200px; }
+.controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--pill); color: var(--accent); cursor: pointer; }
+.controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+.small { font-size: 12px; }
 .muted { color: var(--muted); }
-.small { font-size: 12px; }
-
-header { margin-bottom: 10px; }
-.panel { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-top: 12px; }
-
-/* Selector area */
-.selector { display: flex; flex-direction: column; gap: 8px; }
-.selector-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.selector-label { font-weight: 600; }
-.sel-current { display: inline-flex; align-items: center; gap:8px; background: var(--pill); border: 1px solid var(--accent); color: var(--accent); padding: 6px 10px; border-radius: 999px; cursor: pointer; user-select: none; }
-.swatch { width: 12px; height: 12px; border: 1px solid #000; border-radius: 50%; }
-.sel-menu { position: relative; }
-.sel-dropdown { position: absolute; z-index: 20; top: 40px; left: 0; min-width: 260px; max-height: 360px; overflow: auto;
-  background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 24px rgba(0,0,0,0.12); display:none; }
-.group { padding: 8px 8px 0; }
-.group-title { font-size: 12px; font-weight: 700; color: var(--muted); margin: 4px 8px; text-transform: uppercase; letter-spacing: .04em; }
-.item { display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 8px; }
-.item:hover { background: #f7faff; }
-.item .name { flex: 1; }
-.item .id { font-size: 11px; color: var(--muted); }
-
-.controls-compact { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-
-/* Progress + description row */
-.topline { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.badge { background:#eee; border:1px solid #ddd; border-radius:999px; padding:2px 6px; font-size:11px; }
-.desc-inline { display:flex; gap:8px; align-items:center; padding:6px 10px; border:1px solid #e5ecff; background:#fcfdff; border-radius:10px; }
-.desc-title { font-weight:700; }
-
-/* Canvases */
-.grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-@media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
-.wrap { position: relative; width: 100%; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.wrap { position: relative; width: 100%; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #f8f8f8; }
 canvas { display: block; width: 100%; height: auto; }
-.dot { width: 10px; height: 10px; border-radius: 50%; position: absolute; transform: translate(-50%, -50%);
-  border: 2px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: auto; cursor: grab; touch-action: none; }
-.dot.dragging { cursor: grabbing; box-shadow: 0 0 0 2px var(--accent); }
-
-/* CAS labels */
-.cas-handle { position: absolute; padding: 2px 6px; border-radius: 999px; border: 1px dashed var(--accent);
-  background: rgba(0,91,209,0.06); color: var(--accent); font-size: 11px; transform: translate(-50%, calc(-50% - 16px));
-  pointer-events: none; white-space: nowrap; }
-
-/* Table & legend */
-.section-title { margin: 12px 0 6px; font-weight: 700; }
-table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; font-size: 14px; }
-th { background: #f7f7f7; }
-.ok { color: #207227; } .warn { color: #b36b00; } .bad { color: #b00020; }
-.details { border: 1px dashed var(--line); border-radius: 8px; padding: 8px; background: #fcfcfc; }
-.legend { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin-top: 8px; }
-.small { font-size: 12px; }
+.status-ok { color: #1a7f3b; }
+.status-warn { color: #b36b00; }
+.dot-label { position: absolute; font-size: 12px; padding: 2px 6px; background: rgba(0,0,0,0.6); color: #fff; border-radius: 6px; transform: translate(-50%, -50%); pointer-events: none; }
 </style>
 </head>
 <body>
 <header>
-  <h1>FaceGuide — CAS Grab-Point Comparator</h1>
-  <p class="muted">V3.1: measurements fixed, auto-advance restored, progress accurate, description next to progress.</p>
+  <h1>FaceGuide — Overlay Alignment</h1>
+  <p class="muted">Align your saved target portrait over the comparison feed using the landmarks you placed.</p>
+  <div class="hero">
+    <div class="hero-card">
+      <h2>1. Load your faces</h2>
+      <p>Upload the target portrait, capture or upload the comparison face, and drop matching landmarks in the Manual Landmark Setup. Everything is saved automatically for this overlay view.</p>
+      <a class="cta-btn" href="manual.html">Open Manual Landmark Setup →</a>
+      <p class="muted small">Use this whenever you need to change the images or adjust pins.</p>
+    </div>
+    <div class="hero-card">
+      <h2>2. Align the overlay</h2>
+      <p>Return here once both faces have at least three matching points. Adjust opacity, offsets, scale, or rotation to fine-tune asymmetrical features.</p>
+      <p class="muted small">Saved uploads and landmarks appear here immediately.</p>
+    </div>
+  </div>
 </header>
-
-<section class="panel selector">
-  <div class="selector-bar">
-    <div class="selector-label">Active landmark:</div>
-    <div class="sel-menu">
-      <div id="selCurrent" class="sel-current"><span class="swatch" id="selSwatch"></span><span id="selName">—</span></div>
-      <div id="selDropdown" class="sel-dropdown"></div>
-    </div>
-    <label>CAS Labels:
-      <select id="casLabelMode">
-        <option value="active">Active only</option>
-        <option value="none">None</option>
-        <option value="all">All</option>
-      </select>
+<main class="panel">
+  <div class="controls">
+    <label>Overlay opacity
+      <input type="range" id="opacity" min="0" max="100" value="50" />
+      <span id="opacityVal">50%</span>
     </label>
-    <div class="controls-compact">
-  <label>Anchor:
-    <select id="anchorSel"></select>
-  </label>
-  <label><input type="checkbox" id="alignChk" checked> 3-point alignment</label>
-  <label><input type="checkbox" id="symChk"> Symmetry (average L/R jaw angles)</label>
-  <span class="small muted">Control points:</span>
-  <select id="cp1"></select>
-  <select id="cp2"></select>
-  <select id="cp3"></select>
-  <button id="exportReportBtn">Export Report</button>
-  <span class="small muted">Hotkey: <b>L</b> cycles label mode</span>
-</div>
-
+    <label><input type="checkbox" id="showPoints" checked /> Show control points</label>
+    <button id="startCapture">Start live capture</button>
+    <button id="stopCapture" disabled>Stop</button>
+    <button id="freezeCapture" disabled>Freeze frame</button>
   </div>
-
-  <div class="topline">
-    <div>Progress: <span id="placedCount">0</span>/<span id="totalCount">0</span> <span id="missingBadge" class="badge"></span></div>
-    <div class="desc-inline"><span class="desc-title">Where to click:</span> <span id="activeDesc" class="small">Select a landmark to see placement tips.</span></div>
+  <div class="controls controls-manual">
+    <label>Horizontal offset
+      <input type="range" id="offsetX" min="-250" max="250" value="0" />
+      <span id="offsetXVal" class="control-value">0px</span>
+    </label>
+    <label>Vertical offset
+      <input type="range" id="offsetY" min="-250" max="250" value="0" />
+      <span id="offsetYVal" class="control-value">0px</span>
+    </label>
+    <label>Scale
+      <input type="range" id="scale" min="80" max="120" value="100" />
+      <span id="scaleVal" class="control-value">100%</span>
+    </label>
+    <label>Rotation
+      <input type="range" id="rotation" min="-20" max="20" value="0" />
+      <span id="rotationVal" class="control-value">0°</span>
+    </label>
+    <button id="resetAdjust">Reset adjustments</button>
   </div>
-</section>
-
-<main class="grid">
-  <section class="panel">
-    <div class="label"><strong>A. Reference (target face)</strong></div>
-    <div class="small muted" style="margin:6px 0">Click to place the active landmark.</div>
-    <div class="wrap" id="wrapA"><canvas id="canA"></canvas></div>
-    <div style="margin-top:6px">
-      <input type="file" id="imgA" accept="image/*">
-      <button id="resetA">Reset A</button>
-      <button id="saveA">Save A</button>
-      <button id="loadA">Load A</button>
-    </div>
-  </section>
-
-  <section class="panel">
-    <div class="label"><strong>B. Sim (screenshot)</strong></div>
-    <div class="small muted" style="margin:6px 0">Then click the same landmark on the Sim.</div>
-    <div class="wrap" id="wrapB"><canvas id="canB"></canvas></div>
-    <div style="margin-top:6px">
-      <input type="file" id="imgB" accept="image/*">
-      <button id="resetB">Reset B</button>
-      <button id="saveB">Save B</button>
-      <button id="loadB">Load B</button>
-      <button id="startCapture">Start Live Capture</button>
-      <button id="stopCapture" disabled>Stop Capture</button>
-      <button id="freezeCapture" disabled>Freeze Frame</button>
-    </div>
-  </section>
+  <div id="status" class="muted small"></div>
+  <div class="wrap" id="canvasWrap">
+    <canvas id="overlayCanvas"></canvas>
+  </div>
 </main>
-
-<section class="panel">
-  <div class="section-title">Comparison & Guidance</div>
-  <table id="diffTable">
-    <thead><tr><th>Measurement</th><th>A (target)</th><th>B (sim)</th><th>Δ% (B vs A)</th><th>Constraint</th><th>Guidance</th></tr></thead>
-    <tbody></tbody>
-  </table>
-  <p class="small muted">Green ≤3%, Yellow 3–8%, Red &gt;8%.</p>
-</section>
-
-<section class="panel details">
-  <details>
-    <summary>Legend (colors & labels)</summary>
-    <div id="legend" class="legend small"></div>
-  </details>
-</section>
-
-<video id="captureVideo" playsinline style="display:none;"></video>
-
+<video id="captureVideo" autoplay muted playsinline style="display:none;"></video>
 <script>
 (function(){
-  // ---- Landmarks (CAS) ----
-  const GROUPS = [
-    { name:"Forehead", items:[ {id:"forehead_mid", label:"Forehead Mid"} ]},
-    { name:"Brows", items:[
-      {id:"brow_left_inner", label:"Brow L: Inner"},
-      {id:"brow_left_outer", label:"Brow L: Outer"},
-      {id:"brow_right_inner", label:"Brow R: Inner"},
-      {id:"brow_right_outer", label:"Brow R: Outer"}
-    ]},
-    { name:"Eyes", items:[
-      {id:"left_pupil", label:"Eye L: Pupil"},
-      {id:"right_pupil", label:"Eye R: Pupil"},
-      {id:"eye_left_inner", label:"Eye L: Inner Corner"},
-      {id:"eye_left_outer", label:"Eye L: Outer Corner"},
-      {id:"eye_right_inner", label:"Eye R: Inner Corner"},
-      {id:"eye_right_outer", label:"Eye R: Outer Corner"},
-      {id:"upper_lid_mid", label:"Upper Lid Mid"},
-      {id:"lower_lid_mid", label:"Lower Lid Mid"}
-    ]},
-    { name:"Nose", items:[
-      {id:"nose_bridge", label:"Nose Bridge"},
-      {id:"nose_tip", label:"Nose Tip"},
-      {id:"nostril_left", label:"Nostril L"},
-      {id:"nostril_right", label:"Nostril R"}
-    ]},
-    { name:"Mouth & Lips", items:[
-      {id:"philtrum_top", label:"Philtrum Top"},
-      {id:"mouth_left", label:"Mouth L: Corner"},
-      {id:"mouth_right", label:"Mouth R: Corner"},
-      {id:"upper_lip_mid", label:"Upper Lip Mid"},
-      {id:"lower_lip_mid", label:"Lower Lip Mid"}
-    ]},
-    { name:"Cheeks", items:[
-      {id:"cheek_left", label:"Cheekbone L"},
-      {id:"cheek_right", label:"Cheekbone R"}
-    ]},
-    { name:"Jaw & Chin", items:[
-      {id:"jaw_left", label:"Jaw L (gonion)"},
-      {id:"jaw_right", label:"Jaw R (gonion)"},
-      {id:"chin_tip", label:"Chin Tip"},
-      {id:"chin_left", label:"Chin L Width"},
-      {id:"chin_right", label:"Chin R Width"}
-    ]},
-    { name:"Ears", items:[
-      {id:"ear_left_top", label:"Ear L Top"},
-      {id:"ear_left_lobe", label:"Ear L Lobe"},
-      {id:"ear_right_top", label:"Ear R Top"},
-      {id:"ear_right_lobe", label:"Ear R Lobe"}
-    ]},
-  ];
-  const LANDMARKS = GROUPS.flatMap(g=>g.items);
+  const STATE_KEY = 'faceguide_overlay_state_v1';
+  const MANUAL_KEY = 'faceguide_overlay_manual_adjust_v1';
+  const canvas = document.getElementById('overlayCanvas');
+  const ctx = canvas.getContext('2d');
+  const wrap = document.getElementById('canvasWrap');
+  const opacitySlider = document.getElementById('opacity');
+  const opacityVal = document.getElementById('opacityVal');
+  const showPointsChk = document.getElementById('showPoints');
+  const statusEl = document.getElementById('status');
+  const startBtn = document.getElementById('startCapture');
+  const stopBtn = document.getElementById('stopCapture');
+  const freezeBtn = document.getElementById('freezeCapture');
+  const captureVideo = document.getElementById('captureVideo');
+  const offsetXSlider = document.getElementById('offsetX');
+  const offsetYSlider = document.getElementById('offsetY');
+  const scaleSlider = document.getElementById('scale');
+  const rotationSlider = document.getElementById('rotation');
+  const offsetXVal = document.getElementById('offsetXVal');
+  const offsetYVal = document.getElementById('offsetYVal');
+  const scaleVal = document.getElementById('scaleVal');
+  const rotationVal = document.getElementById('rotationVal');
+  const resetAdjustBtn = document.getElementById('resetAdjust');
 
-  const COLORS = (()=>{
-    const base = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf",
-                  "#393b79","#637939","#8c6d31","#843c39","#7b4173","#3182bd","#e6550d","#31a354","#756bb1","#636363",
-                  "#9c9ede","#e7cb94","#e7969c","#c7e9c0","#9c9ede","#fd8d3c","#e34a33","#43a2ca","#a1d99b","#bcbddc"];
-    const out={}; LANDMARKS.forEach((lm,i)=> out[lm.id]=base[i%base.length]); return out;
-  })();
+  const refImg = new Image();
+  const baseImg = new Image();
+  let refReady = false;
+  let baseReady = false;
+  let overlayOpacity = 0.5;
+  let showPoints = true;
+  let viewA = null;
+  let viewB = null;
+  let pointsA = {};
+  let pointsB = {};
+  let controlIds = ['left_pupil','right_pupil','nose_tip'];
+  let stateLoaded = false;
+  const manualDefaults = {offsetX:0, offsetY:0, scale:1, rotation:0};
+  const manualAdjust = {...manualDefaults};
 
-  const CAS_HANDLES = [
-    { id:"forehead", label:"Forehead / Face Scale", anchorIds:["forehead_mid","nose_bridge"] },
-    { id:"brow_inner", label:"Brow Arch/Inner Span", anchorIds:["brow_left_inner","brow_right_inner"] },
-    { id:"brow_outer", label:"Brow Outer Span", anchorIds:["brow_left_outer","brow_right_outer"] },
-    { id:"eyes_spacing", label:"Eyes Spacing", anchorIds:["left_pupil","right_pupil"] },
-    { id:"eye_width", label:"Eye Width", anchorIds:["eye_left_inner","eye_left_outer","eye_right_inner","eye_right_outer"] },
-    { id:"nose_bridge", label:"Nose Bridge / Tip", anchorIds:["nose_bridge","nose_tip"] },
-    { id:"nostril_width", label:"Nostril Width", anchorIds:["nostril_left","nostril_right"] },
-    { id:"mouth_width", label:"Mouth Width", anchorIds:["mouth_left","mouth_right"] },
-    { id:"lip_thickness", label:"Lip Thickness", anchorIds:["upper_lip_mid","lower_lip_mid"] },
-    { id:"chin_height", label:"Chin Height", anchorIds:["lower_lip_mid","chin_tip"] },
-    { id:"jaw_width", label:"Jaw Width", anchorIds:["jaw_left","jaw_right"] },
-    { id:"cheek_span", label:"Cheekbone Span", anchorIds:["cheek_left","cheek_right"] },
-    { id:"chin_width", label:"Chin Width", anchorIds:["chin_left","chin_right"] },
-    { id:"ears", label:"Ear Size/Rotation", anchorIds:["ear_left_top","ear_left_lobe","ear_right_top","ear_right_lobe"] },
-  ];
+  const captureState = { stream:null, active:false, naturalWidth:0, naturalHeight:0, rafId:0 };
 
-  const DESCRIPTIONS = {
-    forehead_mid: "Click the midline of the forehead hairline (or where hairline would be) centered above the glabella.",
-    brow_left_inner: "Inner end of left eyebrow where it begins near the bridge.",
-    brow_left_outer: "Outer end of left eyebrow tail.",
-    brow_right_inner: "Inner end of right eyebrow near the bridge.",
-    brow_right_outer: "Outer end of right eyebrow tail.",
-    left_pupil: "Center of the left pupil (middle of the iris).",
-    right_pupil: "Center of the right pupil (middle of the iris).",
-    eye_left_inner: "Tear-duct corner of the left eye.",
-    eye_left_outer: "Outer canthus (corner) of the left eye.",
-    eye_right_inner: "Tear-duct corner of the right eye.",
-    eye_right_outer: "Outer canthus (corner) of the right eye.",
-    upper_lid_mid: "Highest point on the upper lid margin above the pupil.",
-    lower_lid_mid: "Lowest point on the lower lid margin below the pupil.",
-    nose_bridge: "Bridge apex between the eyes (just below the glabella).",
-    nose_tip: "Most anterior point of the nose tip.",
-    nostril_left: "Left alar rim (widest point of left nostril).",
-    nostril_right: "Right alar rim (widest point of right nostril).",
-    philtrum_top: "Midpoint under the septum at the top of the philtrum.",
-    mouth_left: "Left mouth corner (commissure).",
-    mouth_right: "Right mouth corner (commissure).",
-    upper_lip_mid: "Midpoint of upper vermilion border.",
-    lower_lip_mid: "Midpoint of lower vermilion border.",
-    cheek_left: "Most prominent point of left cheekbone (zygoma) in frontal view.",
-    cheek_right: "Most prominent point of right cheekbone (zygoma) in frontal view.",
-    jaw_left: "Left jaw angle (gonion) – where jawline turns up toward ear.",
-    jaw_right: "Right jaw angle (gonion).",
-    chin_tip: "Most anterior/inferior point of the chin in frontal view.",
-    chin_left: "Left edge of chin width, roughly halfway between tip and jawline.",
-    chin_right: "Right edge of chin width.",
-    ear_left_top: "Topmost point of left ear helix.",
-    ear_left_lobe: "Lowest point of left earlobe.",
-    ear_right_top: "Topmost point of right ear helix.",
-    ear_right_lobe: "Lowest point of right earlobe."
-  };
+  function manualIsNeutral(){
+    return Math.abs(manualAdjust.offsetX) < 0.5 &&
+      Math.abs(manualAdjust.offsetY) < 0.5 &&
+      Math.abs(manualAdjust.scale - 1) < 0.002 &&
+      Math.abs(manualAdjust.rotation) < 0.1;
+  }
 
-  const MEAS = [
-    { key:"ipd", label:"Interpupillary Distance", fn:p=>dist(p.left_pupil,p.right_pupil), guide:"eyes_spacing" },
-    { key:"eye_width_L", label:"Eye Width L", fn:p=>dist(p.eye_left_inner,p.eye_left_outer), guide:"eye_width" },
-    { key:"eye_width_R", label:"Eye Width R", fn:p=>dist(p.eye_right_inner,p.eye_right_outer), guide:"eye_width" },
-    { key:"brow_inner_span", label:"Brow Inner Span", fn:p=>dist(p.brow_left_inner,p.brow_right_inner), guide:"brow_inner" },
-    { key:"brow_outer_span", label:"Brow Outer Span", fn:p=>dist(p.brow_left_outer,p.brow_right_outer), guide:"brow_outer" },
-    { key:"nose_bridge_pos", label:"Bridge→Tip (vertical)", fn:p=>vDist(p.nose_bridge,p.nose_tip), guide:"nose_bridge" },
-    { key:"nostril_width", label:"Nostril Width", fn:p=>dist(p.nostril_left,p.nostril_right), guide:"nostril_width" },
-    { key:"philtrum", label:"Philtrum", fn:p=>vDist(p.philtrum_top,p.upper_lip_mid), guide:"philtrum" },
-    { key:"lip_thickness", label:"Lip Thickness", fn:p=>vDist(p.upper_lip_mid,p.lower_lip_mid), guide:"lip_thickness" },
-    { key:"mouth_width", label:"Mouth Width", fn:p=>dist(p.mouth_left,p.mouth_right), guide:"mouth_width" },
-    { key:"chin_height", label:"Chin Height", fn:p=>vDist(p.lower_lip_mid,p.chin_tip), guide:"chin_height" },
-    { key:"jaw_width", label:"Jaw Width", fn:p=>dist(p.jaw_left,p.jaw_right), guide:"jaw_width" },
-    { key:"cheek_span", label:"Cheekbone Span", fn:p=>dist(p.cheek_left,p.cheek_right), guide:"cheek_span" },
-    { key:"chin_width", label:"Chin Width", fn:p=>dist(p.chin_left,p.chin_right), guide:"chin_width" },
-    { key:"ear_height_L", label:"Ear Height L", fn:p=>vDist(p.ear_left_top,p.ear_left_lobe), guide:"ear_height" },
-    { key:"ear_height_R", label:"Ear Height R", fn:p=>vDist(p.ear_right_top,p.ear_right_lobe), guide:"ear_height" },
-    { key:"forehead_scale", label:"Forehead→Bridge (vertical)", fn:p=>p.forehead_mid&&p.nose_bridge?Math.abs(p.forehead_mid.y - p.nose_bridge.y):null, guide:"forehead" },
-    { key:"jaw_angle_left", label:"Jaw Angle Left (deg)", fn:p=>jawAngle(p.jaw_left,p.chin_tip), guide:"jaw_angle_left", angular:true },
-    { key:"jaw_angle_right", label:"Jaw Angle Right (deg)", fn:p=>jawAngle(p.jaw_right,p.chin_tip), guide:"jaw_angle_right", angular:true }
-  ];
+  function manualIsActive(){
+    return !manualIsNeutral();
+  }
 
-  const LIMIT_GUIDANCE = {
-    philtrum: {
-      min: "Marked at its minimum. Raise the nose bridge/philtrum top landmarks to open the space instead.",
-      max: "Marked at its maximum. Lower the philtrum top or lift the mouth landmarks to shorten the gap."
-    },
-    chin_height: {
-      min: "Chin can't go higher—lift mouth landmarks or shorten the philtrum to compensate.",
-      max: "Chin can't go lower—drop the mouth corners or extend the philtrum instead."
-    },
-    nose_bridge_pos: {
-      min: "Bridge already as low as possible. Drop the nose tip or raise the forehead anchor instead.",
-      max: "Bridge already high. Lower the bridge or adjust the forehead anchor to balance the proportion."
-    },
-    lip_thickness: {
-      min: "Lips can't be thinner—raise or lower the lip edges to balance thickness visually.",
-      max: "Lips can't be fuller—shift lip edges inward/outward to simulate added volume."
-    },
-    mouth_width: {
-      min: "Mouth width at minimum. Nudge jaw width or chin width inward to create the perceived reduction.",
-      max: "Mouth width maxed. Expand jaw width or cheek span to give the mouth more room."
-    },
-    jaw_width: {
-      min: "Jaw already narrow. Pull mouth corners inward or reduce chin width for similar effect.",
-      max: "Jaw already wide. Push mouth corners outward or expand cheek span to match."
-    },
-    cheek_span: {
-      min: "Cheek span can't shrink—consider narrowing jaw width or mouth width instead.",
-      max: "Cheek span can't widen—expand jaw width or mouth width for a similar read."
-    },
-    chin_width: {
-      min: "Chin width min. Tighten jaw width or pull mouth corners inward to mimic a narrower chin.",
-      max: "Chin width max. Broaden jaw width or mouth width so the chin feels wider proportionally."
-    }
-  };
+  function updateManualLabels(){
+    offsetXVal.textContent = Math.round(manualAdjust.offsetX) + 'px';
+    offsetYVal.textContent = Math.round(manualAdjust.offsetY) + 'px';
+    scaleVal.textContent = Math.round(manualAdjust.scale * 100) + '%';
+    rotationVal.textContent = Math.round(manualAdjust.rotation) + '°';
+    resetAdjustBtn.disabled = manualIsNeutral();
+  }
 
-  // --------- DOM refs ---------
-  const $ = id => document.getElementById(id);
-  const canA=$('canA'), canB=$('canB'), wrapA=$('wrapA'), wrapB=$('wrapB');
-  const ctxA=canA.getContext('2d'), ctxB=canB.getContext('2d');
-  const selCurrent=$('selCurrent'), selSwatch=$('selSwatch'), selName=$('selName'), selDropdown=$('selDropdown');
-  const anchorSel=$('anchorSel'), cp1=$('cp1'), cp2=$('cp2'), cp3=$('cp3');
-  const alignChk=$('alignChk'); 
-  const symChk   = $('symChk');
-  const casLabelModeSel=$('casLabelMode');
-  const diffBody = $('diffTable').querySelector('tbody');
-  const legend = $('legend');
-  const placedCountEl=$('placedCount'), totalCountEl=$('totalCount'), missingBadge=$('missingBadge');
-  const activeDesc=$('activeDesc');
-  const startCaptureBtn=$('startCapture'), stopCaptureBtn=$('stopCapture'), freezeCaptureBtn=$('freezeCapture');
-  const captureVideo=$('captureVideo');
+  function applyManualToSliders(){
+    offsetXSlider.value = manualAdjust.offsetX;
+    offsetYSlider.value = manualAdjust.offsetY;
+    scaleSlider.value = Math.round(manualAdjust.scale * 100);
+    rotationSlider.value = manualAdjust.rotation;
+    updateManualLabels();
+  }
 
-  // --------- State ---------
-  let imgA = new Image(), imgB = new Image();
-  let pointsA = {}, pointsB = {};
-  let activeId = LANDMARKS[0].id;
-  let measurementLocks = {};
-  const LOCKS_KEY = 'faceguide_measurementLocks_v1';
-  const storageAvailable = (()=>{
+  function saveManualAdjustments(){
     try {
-      const k='__fg_test__';
-      window.localStorage.setItem(k,k);
-      window.localStorage.removeItem(k);
-      return true;
-    } catch (e) {
-      return false;
+      const payload = {
+        offsetX: manualAdjust.offsetX,
+        offsetY: manualAdjust.offsetY,
+        scale: manualAdjust.scale,
+        rotation: manualAdjust.rotation
+      };
+      window.localStorage.setItem(MANUAL_KEY, JSON.stringify(payload));
+    } catch(err){
+      console.warn('Failed to save manual overlay adjustments', err);
     }
-  })();
+  }
 
-  const captureState = { stream:null, rafId:0, active:false, naturalWidth:0, naturalHeight:0 };
-
-  let draggingPoint = null;
-  let draggingPointerId = null;
-
-  // --------- Utils ---------
-  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
-  function dist(a,b){ if(!a||!b) return null; const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
-  function vDist(a,b){ if(!a||!b) return null; return Math.abs(a.y-b.y); }
-  function jawAngle(gonion,chin){ if(!gonion||!chin) return null; const dx=chin.x-gonion.x, dy=chin.y-gonion.y; return Math.round((Math.atan2(dy,dx)*180/Math.PI)*10)/10; }
-  function toPixels(points, box){ const out={}; for(const id in points){ const p=points[id]; out[id]={x:p.u*box.w, y:p.v*box.h}; } return out; }
-  function avg(arr){ arr = arr.filter(v=>v!=null); if(!arr.length) return null; return arr.reduce((a,b)=>a+b,0)/arr.length; }
-
-  function loadMeasurementLocks(){
-    if(!storageAvailable) return;
+  function loadManualAdjustments(){
     try {
-      const raw = window.localStorage.getItem(LOCKS_KEY);
+      const raw = window.localStorage.getItem(MANUAL_KEY);
       if(raw){
-        const parsed = JSON.parse(raw);
-        if(parsed && typeof parsed === 'object') measurementLocks = parsed;
-      }
-    } catch (e) {
-      measurementLocks = {};
-    }
-  }
-
-  function saveMeasurementLocks(){
-    if(!storageAvailable) return;
-    try {
-      window.localStorage.setItem(LOCKS_KEY, JSON.stringify(measurementLocks));
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
-  // --------- Dropdown ---------
-  function buildDropdown(){
-    selDropdown.innerHTML='';
-    GROUPS.forEach(g=>{
-      const group = document.createElement('div'); group.className='group';
-      const title = document.createElement('div'); title.className='group-title'; title.textContent=g.name;
-      group.appendChild(title);
-      g.items.forEach(item=>{
-        const row=document.createElement('div'); row.className='item'; row.dataset.id=item.id;
-        const sw=document.createElement('span'); sw.className='swatch'; sw.style.background=COLORS[item.id];
-        const nm=document.createElement('span'); nm.className='name'; nm.textContent=item.label;
-        const idspan=document.createElement('span'); idspan.className='id'; idspan.textContent=item.id;
-        row.appendChild(sw); row.appendChild(nm); row.appendChild(idspan);
-        row.addEventListener('click', ()=>{ setActive(item.id); toggleDropdown(false); });
-        group.appendChild(row);
-      });
-      selDropdown.appendChild(group);
-    });
-  }
-  function toggleDropdown(show){ selDropdown.style.display = show ? 'block' : 'none'; }
-  selCurrent.addEventListener('click', ()=> toggleDropdown(selDropdown.style.display!=='block'));
-  document.addEventListener('click', (e)=>{ if(!selDropdown.contains(e.target) && !selCurrent.contains(e.target)) toggleDropdown(false); });
-
-  function setActive(id){
-    activeId = id;
-    selSwatch.style.background = COLORS[id];
-    const lm = LANDMARKS.find(l=>l.id===id);
-    selName.textContent = lm ? lm.label : id;
-    activeDesc.textContent = DESCRIPTIONS[id] || "Click the most anatomically stable point described by the label.";
-    refreshAll();
-  }
-
-  // --------- Legend ---------
-  function buildLegend(){
-    legend.innerHTML='';
-    LANDMARKS.forEach(lm=>{
-      const sw=document.createElement('div'); sw.className='swatch'; sw.style.width='10px'; sw.style.height='10px'; sw.style.background=COLORS[lm.id];
-      const lab=document.createElement('div'); lab.textContent = lm.label + ' ('+lm.id+')';
-      legend.appendChild(sw); legend.appendChild(lab);
-    });
-  }
-
-  // --------- Controls ---------
-  function initControls(){
-    [cp1,cp2,cp3].forEach(sel=>{
-      sel.innerHTML='';
-      LANDMARKS.forEach(lm=>{ const o=document.createElement('option'); o.value=lm.id; o.textContent=lm.label; sel.appendChild(o); });
-    });
-    cp1.value='left_pupil'; cp2.value='right_pupil'; cp3.value='nose_tip';
-
-    const anchors=[
-      {id:"ipd",label:"Interpupillary Distance (recommended)"},
-      {id:"jaw_width",label:"Jaw Width (gonion↔gonion)"},
-      {id:"mid_eye",label:"Eye Width Avg (per-eye mean)"}
-    ];
-    const anchorSelEl=$('anchorSel'); anchorSelEl.innerHTML='';
-    anchors.forEach(a=>{ const o=document.createElement('option'); o.value=a.id; o.textContent=a.label; anchorSelEl.appendChild(o); });
-    anchorSelEl.value='ipd';
-
-    [anchorSelEl, cp1, cp2, cp3, casLabelModeSel, symChk, $('exportReportBtn')].forEach(el=>{
-      el.addEventListener && el.addEventListener('change', refreshAll);
-      el.id==='exportReportBtn' && el.addEventListener('click', exportReport);
-    });
-
-    document.addEventListener('keydown', (e)=>{
-      if(e.key.toLowerCase()==='l'){
-        const seq = ['active','none','all'];
-        const i = seq.indexOf(casLabelModeSel.value);
-        casLabelModeSel.value = seq[(i+1)%seq.length];
-        redraw('both');
-      }
-    });
-  }
-
-  // --------- Canvas + resize ---------
-  function fitCanvasToContainer(source, wrap, canvas){
-    const containerW = wrap.clientWidth || 1;
-    const naturalW = source && source.naturalWidth;
-    const naturalH = source && source.naturalHeight;
-    if(!naturalW || !naturalH){
-      canvas.width=containerW; canvas.height=Math.max(1, Math.floor(containerW*0.75)); return {w:canvas.width,h:canvas.height};
-    }
-    const scale = containerW / naturalW;
-    const w = Math.max(1, Math.round(naturalW * scale));
-    const h = Math.max(1, Math.round(naturalH * scale));
-    canvas.width = w; canvas.height = h;
-    return {w,h};
-  }
-
-  function handleForLandmark(id){
-    for(const h of CAS_HANDLES){ if(h.anchorIds.includes(id)) return h; }
-    return null;
-  }
-
-  function renderCASHandles(container, pixelPoints, mode, activeId){
-    container.querySelectorAll('.cas-handle').forEach(n=>n.remove());
-    if(mode==='none') return;
-    const handles = (mode==='all') ? CAS_HANDLES : (handleForLandmark(activeId) ? [handleForLandmark(activeId)] : []);
-    handles.forEach(h=>{
-      const pts=h.anchorIds.map(id=>pixelPoints[id]).filter(Boolean);
-      if(!pts.length) return;
-      let cx=0, cy=0; pts.forEach(p=>{cx+=p.x;cy+=p.y;}); cx/=pts.length; cy/=pts.length;
-      const label=document.createElement('div');
-      label.className='cas-handle'; label.style.left=cx+'px'; label.style.top=cy+'px'; label.textContent=h.label;
-      container.appendChild(label);
-    });
-  }
-
-  function renderDots(container, pixelPoints){
-    const which = container===wrapA ? 'A' : 'B';
-    const existing = new Map();
-    container.querySelectorAll('.dot').forEach(el=>{
-      existing.set(el.dataset.id, el);
-    });
-    LANDMARKS.forEach(lm=>{
-      const p = pixelPoints[lm.id];
-      const el = existing.get(lm.id);
-      if(p){
-        if(el){
-          el.style.left = p.x + 'px';
-          el.style.top = p.y + 'px';
-          el.style.background = COLORS[lm.id];
-          el.dataset.which = which;
-          existing.delete(lm.id);
-        } else {
-          const d=document.createElement('div');
-          d.className='dot';
-          d.style.left=p.x+'px';
-          d.style.top=p.y+'px';
-          d.style.background=COLORS[lm.id];
-          d.dataset.id = lm.id;
-          d.dataset.which = which;
-          d.addEventListener('pointerdown', startDragPoint, {once:false});
-          container.appendChild(d);
+        const data = JSON.parse(raw);
+        if(data && typeof data === 'object'){
+          if(typeof data.offsetX === 'number'){ manualAdjust.offsetX = clamp(data.offsetX, -250, 250); }
+          if(typeof data.offsetY === 'number'){ manualAdjust.offsetY = clamp(data.offsetY, -250, 250); }
+          if(typeof data.scale === 'number'){ manualAdjust.scale = clamp(data.scale, 0.8, 1.2); }
+          if(typeof data.rotation === 'number'){ manualAdjust.rotation = clamp(data.rotation, -20, 20); }
         }
-      } else if(el){
-        el.remove();
-        existing.delete(lm.id);
       }
-    });
-    existing.forEach(el=>el.remove());
+    } catch(err){
+      console.warn('Failed to load manual overlay adjustments', err);
+    }
+    applyManualToSliders();
   }
 
-  function startDragPoint(e){
-    e.preventDefault();
-    e.stopPropagation();
-    const target = e.currentTarget;
-    draggingPoint = { id: target.dataset.id, which: target.dataset.which, el: target };
-    draggingPointerId = e.pointerId;
-    target.classList.add('dragging');
-    if(target.setPointerCapture){ try{ target.setPointerCapture(e.pointerId); }catch(err){} }
+  function updateManualFromInputs(){
+    manualAdjust.offsetX = clamp(parseFloat(offsetXSlider.value) || 0, -250, 250);
+    manualAdjust.offsetY = clamp(parseFloat(offsetYSlider.value) || 0, -250, 250);
+    manualAdjust.scale = clamp((parseFloat(scaleSlider.value) || 100) / 100, 0.8, 1.2);
+    manualAdjust.rotation = clamp(parseFloat(rotationSlider.value) || 0, -20, 20);
+    updateManualLabels();
+    saveManualAdjustments();
+    drawOnce();
   }
 
-  function updateDragPoint(e){
-    if(!draggingPoint || e.pointerId!==draggingPointerId) return;
-    const canvas = draggingPoint.which==='A'?canA:canB;
-    const store = draggingPoint.which==='A'?pointsA:pointsB;
-    const wrap = draggingPoint.which==='A'?wrapA:wrapB;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    store[draggingPoint.id] = {
-      u: clamp(x/(canvas.width||1),0,1),
-      v: clamp(y/(canvas.height||1),0,1)
+  function resetManualAdjustments(){
+    manualAdjust.offsetX = manualDefaults.offsetX;
+    manualAdjust.offsetY = manualDefaults.offsetY;
+    manualAdjust.scale = manualDefaults.scale;
+    manualAdjust.rotation = manualDefaults.rotation;
+    applyManualToSliders();
+    saveManualAdjustments();
+    drawOnce();
+  }
+
+  function composeManualTransform(base){
+    if(!base) return null;
+    const s = manualAdjust.scale;
+    const r = manualAdjust.rotation * Math.PI / 180;
+    const cr = Math.cos(r);
+    const sr = Math.sin(r);
+    const dx = manualAdjust.offsetX;
+    const dy = manualAdjust.offsetY;
+    return {
+      a: s * (cr * base.a - sr * base.b),
+      b: s * (sr * base.a + cr * base.b),
+      c: -s * (cr * base.b + sr * base.a),
+      d: s * (cr * base.a - sr * base.b),
+      e: s * (cr * base.tx - sr * base.ty) + dx,
+      f: s * (sr * base.tx + cr * base.ty) + dy
     };
-    const pxAll = toPixels(store, {w:canvas.width, h:canvas.height});
-    const selfPx = pxAll[draggingPoint.id];
-    if(selfPx){
-      draggingPoint.el.style.left = selfPx.x + 'px';
-      draggingPoint.el.style.top = selfPx.y + 'px';
-    }
-    renderCASHandles(wrap, pxAll, casLabelModeSel.value, activeId);
-    refreshDiff();
-    refreshProgress();
   }
 
-  function endDragPoint(e){
-    if(!draggingPoint || e.pointerId!==draggingPointerId) return;
-    if(draggingPoint.el && draggingPoint.el.releasePointerCapture){
-      try{ draggingPoint.el.releasePointerCapture(e.pointerId); }catch(err){}
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  function naturalSize(which){
+    if(which==='A'){
+      return {w: refImg.naturalWidth || 0, h: refImg.naturalHeight || 0};
     }
-    draggingPoint.el && draggingPoint.el.classList.remove('dragging');
-    draggingPoint = null;
-    draggingPointerId = null;
+    if(captureState.active){
+      return {
+        w: captureState.naturalWidth || captureVideo.videoWidth || 0,
+        h: captureState.naturalHeight || captureVideo.videoHeight || 0
+      };
+    }
+    return {w: baseImg.naturalWidth || 0, h: baseImg.naturalHeight || 0};
   }
 
-  function redraw(which='both'){
-    const mode = casLabelModeSel.value;
-    if(which==='A' || which==='both'){
-      const {w,h} = fitCanvasToContainer(imgA, wrapA, canA);
-      if(w>0 && h>0 && imgA.src){ ctxA.clearRect(0,0,w,h); ctxA.drawImage(imgA, 0,0, w,h); }
-      const px = toPixels(pointsA, {w:canA.width,h:canA.height});
-      renderDots(wrapA, px); renderCASHandles(wrapA, px, mode, activeId);
-    }
-    if(which==='B' || which==='both'){
-      const source = captureState.active ? captureState : imgB;
-      const {w,h} = fitCanvasToContainer(source, wrapB, canB);
-      if(captureState.active){
-        if(captureVideo.readyState>=2){ ctxB.drawImage(captureVideo, 0,0, w,h); }
-      } else if(w>0 && h>0 && imgB.src){
-        ctxB.clearRect(0,0,w,h); ctxB.drawImage(imgB, 0,0, w,h);
-      } else {
-        ctxB.clearRect(0,0,w,h);
-      }
-      const px = toPixels(pointsB, {w:canB.width,h:canB.height});
-      renderDots(wrapB, px); renderCASHandles(wrapB, px, mode, activeId);
-    }
+  function boundingBox(points, ids, dims){
+    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity, count=0;
+    ids.forEach(id=>{
+      const p = points[id];
+      if(!p) return;
+      const x = p.u * (dims.w||0);
+      const y = p.v * (dims.h||0);
+      if(!isFinite(x) || !isFinite(y)) return;
+      minX=Math.min(minX,x); maxX=Math.max(maxX,x);
+      minY=Math.min(minY,y); maxY=Math.max(maxY,y);
+      count++;
+    });
+    if(!count || !isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return null;
+    const w=Math.max(1, maxX-minX);
+    const h=Math.max(1, maxY-minY);
+    return {x:minX, y:minY, w, h, cx:minX+w/2, cy:minY+h/2};
   }
 
-  const roA = window.ResizeObserver ? new ResizeObserver(()=>{ redraw('A'); refreshDiff(); refreshProgress(); }) : null;
-  const roB = window.ResizeObserver ? new ResizeObserver(()=>{ redraw('B'); refreshDiff(); refreshProgress(); }) : null;
-  if(roA) roA.observe(wrapA); if(roB) roB.observe(wrapB);
-  window.addEventListener('resize', ()=>{ redraw('both'); refreshDiff(); refreshProgress(); });
-
-  function updateCaptureButtons(){
-    startCaptureBtn.disabled = captureState.active;
-    stopCaptureBtn.disabled = !captureState.active;
-    freezeCaptureBtn.disabled = !captureState.active;
-  }
-
-  function stopLiveCapture(){
-    if(captureState.stream){
-      captureState.stream.getTracks().forEach(t=>t.stop());
+  function paddedBox(box, dims){
+    if(!box) return null;
+    const base = Math.max(box.w, box.h);
+    const pad = base * 0.25;
+    const minSize = Math.min(dims.w || 0, dims.h || 0) * 0.25;
+    let w = box.w + pad * 2;
+    let h = box.h + pad * 2;
+    if(minSize){
+      w = Math.max(w, minSize);
+      h = Math.max(h, minSize);
     }
-    captureState.stream = null;
-    captureState.active = false;
-    captureState.naturalWidth = 0;
-    captureState.naturalHeight = 0;
-    try { captureVideo.pause(); } catch(e){}
-    captureVideo.srcObject = null;
-    if(captureState.rafId){ cancelAnimationFrame(captureState.rafId); captureState.rafId=0; }
-    redraw('B');
-    updateCaptureButtons();
+    if(dims.w){ w = Math.min(w, dims.w); }
+    if(dims.h){ h = Math.min(h, dims.h); }
+    return {cx: box.cx, cy: box.cy, w: Math.max(1,w), h: Math.max(1,h)};
   }
 
-  function drawCaptureFrame(){
-    if(!captureState.active) return;
-    if(captureVideo.readyState>=2){
-      if(captureState.naturalWidth !== captureVideo.videoWidth || captureState.naturalHeight !== captureVideo.videoHeight){
-        captureState.naturalWidth = captureVideo.videoWidth;
-        captureState.naturalHeight = captureVideo.videoHeight;
-        fitCanvasToContainer(captureState, wrapB, canB);
-        const px = toPixels(pointsB, {w:canB.width,h:canB.height});
-        renderDots(wrapB, px);
-        renderCASHandles(wrapB, px, casLabelModeSel.value, activeId);
-      }
-      ctxB.drawImage(captureVideo, 0, 0, canB.width, canB.height);
+  function alignBox(box, targetW, targetH, dims){
+    if(!box) return null;
+    let w = Math.min(targetW, dims.w || targetW);
+    let h = Math.min(targetH, dims.h || targetH);
+    w = Math.max(1, w);
+    h = Math.max(1, h);
+    let x = box.cx - w/2;
+    let y = box.cy - h/2;
+    if(dims.w){
+      if(x < 0) x = 0;
+      if(x + w > dims.w) x = Math.max(0, dims.w - w);
     }
-    captureState.rafId = requestAnimationFrame(drawCaptureFrame);
+    if(dims.h){
+      if(y < 0) y = 0;
+      if(y + h > dims.h) y = Math.max(0, dims.h - h);
+    }
+    return {x, y, w, h};
   }
 
-  async function startLiveCapture(){
-    if(captureState.active) return;
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
-      alert('Screen capture is not supported in this browser.');
+  function sharedIds(){
+    const ids = [];
+    const seen = new Set();
+    Object.keys(pointsA).forEach(id=>{ if(pointsA[id] && pointsB[id]){ ids.push(id); seen.add(id); } });
+    Object.keys(pointsB).forEach(id=>{ if(!seen.has(id) && pointsA[id] && pointsB[id]) ids.push(id); });
+    return ids;
+  }
+
+  function updateMatchedView(){
+    const shared = sharedIds();
+    if(shared.length < 3){
+      viewA = viewB = null;
       return;
     }
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
-      captureState.stream = stream;
-      captureState.active = true;
-      captureVideo.srcObject = stream;
-      captureVideo.onloadedmetadata = ()=>{
-        captureVideo.play().catch(()=>{});
-        captureState.naturalWidth = captureVideo.videoWidth;
-        captureState.naturalHeight = captureVideo.videoHeight;
-        fitCanvasToContainer(captureState, wrapB, canB);
-        redraw('B');
-        drawCaptureFrame();
+    const dimsA = naturalSize('A');
+    const dimsB = naturalSize('B');
+    if(!dimsA.w || !dimsA.h || !dimsB.w || !dimsB.h){
+      viewA = viewB = null;
+      return;
+    }
+    const boxA = paddedBox(boundingBox(pointsA, shared, dimsA), dimsA);
+    const boxB = paddedBox(boundingBox(pointsB, shared, dimsB), dimsB);
+    if(!boxA || !boxB){
+      viewA = viewB = null;
+      return;
+    }
+    const targetW = Math.min(Math.max(boxA.w, boxB.w), dimsA.w, dimsB.w);
+    const targetH = Math.min(Math.max(boxA.h, boxB.h), dimsA.h, dimsB.h);
+    if(targetW < boxA.w || targetW < boxB.w || targetH < boxA.h || targetH < boxB.h){
+      viewA = viewB = null;
+      return;
+    }
+    viewA = alignBox(boxA, targetW, targetH, dimsA);
+    viewB = alignBox(boxB, targetW, targetH, dimsB);
+  }
+
+  function fitCanvas(){
+    const dims = viewB ? {w:viewB.w, h:viewB.h} : naturalSize('B');
+    const containerW = wrap.clientWidth || 600;
+    const baseW = dims.w || containerW;
+    const baseH = dims.h || (baseW*0.75);
+    const aspect = baseW ? (baseH/baseW) : 0.75;
+    const w = containerW;
+    const h = Math.max(1, Math.round(w * aspect));
+    canvas.width = w;
+    canvas.height = h;
+  }
+
+  function toNatural(p, dims){
+    if(!p || !dims.w || !dims.h) return null;
+    return {x: p.u * dims.w, y: p.v * dims.h};
+  }
+
+  function toCanvasPoint(p, dims, view){
+    if(!p) return null;
+    const nat = toNatural(p, dims);
+    if(!nat) return null;
+    if(view){
+      return {
+        x: (nat.x - view.x) / (view.w || 1) * canvas.width,
+        y: (nat.y - view.y) / (view.h || 1) * canvas.height
       };
-      const [videoTrack] = stream.getVideoTracks();
-      if(videoTrack){ videoTrack.addEventListener('ended', stopLiveCapture, {once:true}); }
-      updateCaptureButtons();
-    } catch (err) {
-      console.error('Live capture failed', err);
-      alert('Screen capture failed or was blocked.');
     }
+    return {
+      x: (nat.x / (dims.w || 1)) * canvas.width,
+      y: (nat.y / (dims.h || 1)) * canvas.height
+    };
   }
 
-  function freezeCapture(){
-    if(!captureState.active) return;
-    try {
-      const dataUrl = canB.toDataURL('image/png');
-      if(dataUrl){
-        imgB = new Image();
-        imgB.onload = ()=>{ redraw('B'); refreshDiff(); };
-        imgB.src = dataUrl;
-      }
-    } catch (e) {
-      console.error('Freeze frame failed', e);
-    }
-    stopLiveCapture();
-  }
-
-  // --------- Image I/O ---------
-  startCaptureBtn.addEventListener('click', startLiveCapture);
-  stopCaptureBtn.addEventListener('click', stopLiveCapture);
-  freezeCaptureBtn.addEventListener('click', freezeCapture);
-
-  $('imgA').addEventListener('change', e=>{
-    const f=e.target.files[0]; if(!f) return;
-    imgA.onload=()=>{ redraw('A'); refreshDiff(); refreshProgress(); };
-    imgA.src=URL.createObjectURL(f);
-  });
-  $('imgB').addEventListener('change', e=>{
-    const f=e.target.files[0]; if(!f) return;
-    stopLiveCapture();
-    imgB.onload=()=>{ redraw('B'); refreshDiff(); refreshProgress(); };
-    imgB.src=URL.createObjectURL(f);
-  });
-
-  // --------- Placement with auto-advance ---------
-  function placePoint(evt, canvas, which){
-    const r = canvas.getBoundingClientRect();
-    const x = evt.clientX - r.left, y = evt.clientY - r.top;
-    const w = canvas.width || 1, h = canvas.height || 1;
-    const pt = {u: clamp(x/w,0,1), v: clamp(y/h,0,1)};
-    if(which==='A') pointsA[activeId]=pt; else pointsB[activeId]=pt;
-    redraw(which); refreshDiff(); refreshProgress();
-    if(pointsA[activeId] && pointsB[activeId]){
-      const next = nextUnplacedAfter(activeId);
-      if(next){ setActive(next); }
-    }
-  }
-  function nextUnplacedAfter(current){
-    const idx = LANDMARKS.findIndex(l=>l.id===current);
-    const order = LANDMARKS.slice(idx+1).concat(LANDMARKS.slice(0, idx+1));
-    for(const lm of order){
-      if(!(pointsA[lm.id] && pointsB[lm.id])) return lm.id;
-    }
-    return null;
-  }
-  wrapA.addEventListener('click', e=> placePoint(e, canA, 'A'));
-  wrapB.addEventListener('click', e=> placePoint(e, canB, 'B'));
-  window.addEventListener('pointermove', updateDragPoint);
-  window.addEventListener('pointerup', endDragPoint);
-  window.addEventListener('pointercancel', endDragPoint);
-
-  // --------- Export / Save/Load ---------
-  function exportReport(){
-    const html = document.documentElement.outerHTML;
-    const blob = new Blob([html],{type:'text/html'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='faceguide_report.html'; a.click();
-  }
-  $('resetA').addEventListener('click', ()=>{ pointsA={}; redraw('A'); refreshDiff(); refreshProgress(); });
-  $('resetB').addEventListener('click', ()=>{ stopLiveCapture(); pointsB={}; redraw('B'); refreshDiff(); refreshProgress(); });
-  $('saveA').addEventListener('click', ()=> downloadJSON({points:pointsA}, 'landmarks_A.json'));
-  $('saveB').addEventListener('click', ()=> downloadJSON({points:pointsB}, 'landmarks_B.json'));
-  $('loadA').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ pointsA=obj.points; redraw('A'); refreshDiff(); refreshProgress(); } }));
-  $('loadB').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ stopLiveCapture(); pointsB=obj.points; redraw('B'); refreshDiff(); refreshProgress(); } }));
-  function downloadJSON(obj, filename){
-    const blob = new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
-  }
-  function pickJSON(cb){
-    const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json';
-    inp.onchange=()=>{ const f=inp.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ cb(JSON.parse(r.result)); }catch(e){ alert('Invalid JSON'); } }; r.readAsText(f); };
-    inp.click();
-  }
-
-  // --------- Diff / Measurements ---------
   function transpose(A){ const r=A.length,c=A[0].length; const AT=Array.from({length:c},()=>Array(r).fill(0)); for(let i=0;i<r;i++){ for(let j=0;j<c;j++){ AT[j][i]=A[i][j]; } } return AT; }
   function matMul(A,B){ const r=A.length, c=B[0].length, n=B.length; const R=Array.from({length:r},()=>Array(c).fill(0)); for(let i=0;i<r;i++){ for(let j=0;j<c;j++){ let s=0; for(let k=0;k<n;k++){ s+=A[i][k]*B[k][j]; } R[i][j]=s; } } return R; }
   function matVec(A,v){ const r=A.length, c=A[0].length; const out=Array(r).fill(0); for(let i=0;i<r;i++){ let s=0; for(let j=0;j<c;j++){ s+=A[i][j]*v[j]; } out[i]=s; } return out; }
@@ -769,173 +383,225 @@ th { background: #f7f7f7; }
     for(let i=0;i<n;i++){ for(let j=0;j<n;j++){ inv[i][j]=M[i][j+n]; } }
     return inv;
   }
-  function solveSimilarity(Bpts, Apts){
+  function solveSimilarity(srcPts, dstPts){
     const M=[], Y=[];
     for(let i=0;i<3;i++){
-      const xb=Bpts[i].x, yb=Bpts[i].y, xa=Apts[i].x, ya=Apts[i].y;
-      M.push([xb, -yb, 1, 0]); Y.push(xa);
-      M.push([yb,  xb, 0, 1]); Y.push(ya);
+      const xs=srcPts[i].x, ys=srcPts[i].y, xd=dstPts[i].x, yd=dstPts[i].y;
+      M.push([xs, -ys, 1, 0]); Y.push(xd);
+      M.push([ys,  xs, 0, 1]); Y.push(yd);
     }
     const MT = transpose(M); const MTM = matMul(MT,M); const MTY = matVec(MT,Y);
     const inv = inv4(MTM); if(!inv) return null;
     const u = matVec(inv, MTY);
     return {a:u[0], b:u[1], tx:u[2], ty:u[3]};
   }
-  function transformPoint(p, T){ return { x: T.a*p.x - T.b*p.y + T.tx, y: T.b*p.x + T.a*p.y + T.ty }; }
-  function transformAll(points, T){ const out={}; for(const k in points){ out[k]=transformPoint(points[k], T); } return out; }
 
-  function measureAll(px){ const out={}; for(const m of MEAS){ out[m.key]=m.fn(px); } out.mid_eye = avg([out.eye_width_L, out.eye_width_R]); return out; }
-  function normalize(meas, anchorKey){
-    const a = (anchorKey==='ipd') ? meas.ipd : (anchorKey==='jaw_width' ? meas.jaw_width : meas.mid_eye);
-    const out={}; for(const k in meas){ const v=meas[k]; out[k]=(v==null||a==null||a===0)?null:Math.round((v/a)*1000)/1000; }
-    return out;
-  }
-  function fmtVal(v, angular){ if(v==null) return '—'; return angular ? v.toFixed(1)+'°' : v.toFixed(3); }
-  function fmtDelta(d){ if(d==null||!isFinite(d)) return '—'; const a=Math.abs(d); const cls=a<=3?'ok':(a<=8?'warn':'bad'); const s=(d>=0?'+':'')+d.toFixed(1)+'%'; return `<span class="${cls}">${s}</span>`; }
-
-  function refreshDiff(){
-    const pxA = toPixels(pointsA, {w:canA.width,h:canA.height});
-    const pxB0= toPixels(pointsB, {w:canB.width,h:canB.height});
-    let pxB={...pxB0};
-    if(alignChk.checked){
-      const ids=[cp1.value,cp2.value,cp3.value];
-      if(ids.every(id=>pxA[id]&&pxB0[id])){
-        const T = solveSimilarity([pxB0[ids[0]],pxB0[ids[1]],pxB0[ids[2]]],[pxA[ids[0]],pxA[ids[1]],pxA[ids[2]]]);
-        if(T) pxB = transformAll(pxB0, T);
+  function updateStatus(baseAvailable, overlayApplied, pointsUsed, manualActiveFlag){
+    if(!stateLoaded){
+      statusEl.textContent = 'No saved faces yet. Visit the Manual Landmark Setup to upload the target image, capture your comparison face, and place at least three matching landmarks.';
+      statusEl.className = 'small status-warn';
+      return;
+    }
+    const parts = [];
+    if(!refReady){ parts.push('Waiting for target image to load.'); }
+    if(!baseAvailable){
+      parts.push(captureState.active ? 'Waiting for live capture...' : 'No comparison image detected. Start a capture or freeze a frame in the main tool.');
+    }
+    if(pointsUsed < 3){
+      parts.push('At least three shared landmarks are required for alignment.');
+    } else {
+      parts.push('Use the manual offset, scale, and rotation controls for fine tuning once aligned.');
+      if(manualActiveFlag){
+        parts.push('Manual adjustments active — reset to return to the auto alignment.');
       }
     }
-    const a=measureAll(pxA), b=measureAll(pxB);
-    const an=normalize(a, $('anchorSel').value), bn=normalize(b, $('anchorSel').value);
-
-    const jawA = avg([a.jaw_angle_left,a.jaw_angle_right]);
-    const jawB = avg([b.jaw_angle_left,b.jaw_angle_right]);
-
-    diffBody.innerHTML='';
-    for(const m of MEAS){
-      let A = m.angular ? (m.key.includes('jaw_angle') && symChk.checked ? jawA : a[m.key]) : an[m.key];
-      let B = m.angular ? (m.key.includes('jaw_angle') && symChk.checked ? jawB : b[m.key]) : bn[m.key];
-      const delta = (A!=null && B!=null) ? ((B - A) / A * 100) : null;
-      const tr=document.createElement('tr');
-
-      const nameTd=document.createElement('td');
-      nameTd.textContent = m.label + ((symChk.checked && m.key.includes('jaw_angle'))?' (symm.)':'');
-      tr.appendChild(nameTd);
-
-      const aTd=document.createElement('td'); aTd.textContent = fmtVal(A, m.angular);
-      const bTd=document.createElement('td'); bTd.textContent = fmtVal(B, m.angular);
-      const deltaTd=document.createElement('td'); deltaTd.innerHTML = fmtDelta(delta);
-      tr.appendChild(aTd); tr.appendChild(bTd); tr.appendChild(deltaTd);
-
-      const constraintTd=document.createElement('td');
-      const lockSel=document.createElement('select');
-      [
-        {value:'', label:'None'},
-        {value:'min', label:'At Low Limit'},
-        {value:'max', label:'At High Limit'}
-      ].forEach(opt=>{
-        const o=document.createElement('option'); o.value=opt.value; o.textContent=opt.label; lockSel.appendChild(o);
-      });
-      lockSel.value = measurementLocks[m.key] || '';
-      lockSel.addEventListener('change', ()=>{
-        if(lockSel.value){ measurementLocks[m.key]=lockSel.value; }
-        else { delete measurementLocks[m.key]; }
-        saveMeasurementLocks();
-        refreshDiff();
-      });
-      constraintTd.appendChild(lockSel);
-      tr.appendChild(constraintTd);
-
-      const guideTd=document.createElement('td');
-      guideTd.innerHTML = guidance(m, A, B, delta, symChk.checked, measurementLocks[m.key] || null);
-      tr.appendChild(guideTd);
-
-      diffBody.appendChild(tr);
-    }
+    if(overlayApplied){ parts.push('Overlay active — adjust opacity or freeze the frame as needed.'); }
+    statusEl.textContent = parts.join(' ');
+    const cls = overlayApplied ? 'status-ok' : ((baseAvailable && pointsUsed >= 3) ? 'status-warn' : 'muted');
+    statusEl.className = 'small ' + cls;
   }
 
-  function guidance(m, A, B, delta, symOnly, lock){
-    if(A==null || B==null) return '<span class="muted">Place required landmarks</span>';
-    const pct = Math.abs(delta).toFixed(1) + '%';
-    const more = delta>0;
-    let base;
-    switch(m.guide){
-      case 'eyes_spacing': base = more? `Bring eyes ${pct} closer.` : `Space eyes ${pct} farther.`; break;
-      case 'eye_width':    base = more? `Reduce eye width by ${pct}.` : `Increase eye width by ${pct}.`; break;
-      case 'brow_inner':   base = more? `Increase inner brow span by ${pct}.` : `Decrease inner brow span by ${pct}.`; break;
-      case 'brow_outer':   base = more? `Increase outer brow span by ${pct}.` : `Decrease outer brow span by ${pct}.`; break;
-      case 'nose_bridge':  base = more? `Shorten bridge→tip by ${pct}.` : `Lengthen bridge→tip by ${pct}.`; break;
-      case 'nostril_width':base = more? `Narrow nostrils by ${pct}.` : `Widen nostrils by ${pct}.`; break;
-      case 'philtrum':     base = more? `Shorten philtrum by ${pct}.` : `Lengthen philtrum by ${pct}.`; break;
-      case 'lip_thickness':base = more? `Reduce lip thickness by ${pct}.` : `Increase lip thickness by ${pct}.`; break;
-      case 'mouth_width':  base = more? `Narrow mouth by ${pct}.` : `Widen mouth by ${pct}.`; break;
-      case 'chin_height':  base = more? `Reduce chin height by ${pct}.` : `Increase chin height by ${pct}.`; break;
-      case 'jaw_width':    base = more? `Reduce jaw width by ${pct}.` : `Increase jaw width by ${pct}.`; break;
-      case 'cheek_span':   base = more? `Reduce cheekbone span by ${pct}.` : `Increase cheekbone span by ${pct}.`; break;
-      case 'chin_width':   base = more? `Reduce chin width by ${pct}.` : `Increase chin width by ${pct}.`; break;
-      case 'ear_height':   base = more? `Shorten ear height by ${pct}.` : `Increase ear height by ${pct}.`; break;
-      case 'forehead':     base = more? `Lower forehead/raise bridge by ${pct}.` : `Raise forehead/lower bridge by ${pct}.`; break;
-      case 'jaw_angle_left':
-      case 'jaw_angle_right':
-        if (symOnly) { base = (B>A) ? `Increase jaw angle by ${(B-A).toFixed(1)}°.` : `Decrease jaw angle by ${(A-B).toFixed(1)}°.`; }
-        else {
-          const side = m.guide.endsWith('left')?'left':'right';
-          base = (B>A) ? `Increase ${side} jaw angle by ${(B-A).toFixed(1)}°.` : `Decrease ${side} jaw angle by ${(A-B).toFixed(1)}°.`;
+  function drawOnce(){
+    fitCanvas();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const dimsB = naturalSize('B');
+    updateMatchedView();
+    const baseAvailable = captureState.active ? (captureVideo.readyState >= 2) : baseReady;
+
+    if(baseAvailable){
+      if(viewB){
+        ctx.drawImage(captureState.active ? captureVideo : baseImg, viewB.x, viewB.y, viewB.w, viewB.h, 0,0, canvas.width, canvas.height);
+      } else if(dimsB.w && dimsB.h){
+        ctx.drawImage(captureState.active ? captureVideo : baseImg, 0,0, dimsB.w, dimsB.h, 0,0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      }
+    } else {
+      ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+
+    let overlayApplied = false;
+    const dimsA = naturalSize('A');
+    const ids = controlIds.filter(id=>pointsA[id] && pointsB[id]);
+    if(refReady && baseAvailable && ids.length===3){
+      const src = ids.map(id=>toNatural(pointsA[id], dimsA));
+      const dst = ids.map(id=>toCanvasPoint(pointsB[id], dimsB, viewB));
+      if(src.every(Boolean) && dst.every(Boolean)){
+        const T = solveSimilarity(src, dst);
+        if(T){
+          const final = composeManualTransform(T);
+          if(final){
+            ctx.save();
+            ctx.globalAlpha = overlayOpacity;
+            ctx.setTransform(final.a, final.b, final.c, final.d, final.e, final.f);
+            ctx.drawImage(refImg, 0, 0);
+            ctx.restore();
+            overlayApplied = true;
+          }
         }
-        break;
-      default: base = '';
-    }
-    if(lock && delta!=null){
-      if((lock==='min' && more) || (lock==='max' && !more)){
-        const extra = LIMIT_GUIDANCE[m.key]?.[lock] || (lock==='min'
-          ? 'Marked as limited on the low end—adjust nearby landmarks that influence this measurement.'
-          : 'Marked as limited on the high end—adjust neighbouring landmarks that affect this measurement.');
-        base += `<div class="small muted">${extra}</div>`;
       }
     }
-    return base;
+
+    if(showPoints && ids.length){
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ff2f68';
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 2;
+      ids.forEach(id=>{
+        const pt = toCanvasPoint(pointsB[id], dimsB, viewB);
+        if(!pt) return;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 5, 0, Math.PI*2);
+        ctx.fill();
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    updateStatus(baseAvailable, overlayApplied, ids.length, manualIsActive());
   }
 
-  // --------- Progress ---------
-  function refreshProgress(){
-    const total = LANDMARKS.length;
-    let placed = 0;
-    LANDMARKS.forEach(lm=>{ if(pointsA[lm.id] && pointsB[lm.id]) placed++; });
-    placedCountEl.textContent = placed;
-    totalCountEl.textContent = total;
-    const missing = total - placed;
-    missingBadge.textContent = missing ? (missing + " missing") : "All placed ✔";
+  function tick(){
+    drawOnce();
+    if(captureState.active){
+      captureState.rafId = requestAnimationFrame(tick);
+    }
   }
 
-  function refreshAll(){ redraw('both'); refreshDiff(); refreshProgress(); }
+  function startLiveCapture(){
+    if(captureState.active) return;
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
+      alert('Screen capture is not supported in this browser.');
+      return;
+    }
+    navigator.mediaDevices.getDisplayMedia({video:true, audio:false}).then(stream=>{
+      captureState.stream = stream;
+      captureState.active = true;
+      captureVideo.srcObject = stream;
+      captureVideo.onloadedmetadata = ()=>{
+        captureState.naturalWidth = captureVideo.videoWidth;
+        captureState.naturalHeight = captureVideo.videoHeight;
+        captureVideo.play().catch(()=>{});
+        tick();
+      };
+      const [videoTrack] = stream.getVideoTracks();
+      if(videoTrack){ videoTrack.addEventListener('ended', stopLiveCapture, {once:true}); }
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      freezeBtn.disabled = false;
+    }).catch(err=>{
+      console.error('Live capture failed', err);
+      alert('Screen capture failed or was blocked.');
+    });
+  }
 
-  // --------- Export helpers ---------
-  function downloadJSON(obj, filename){
-    const blob = new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
-  }
-  function pickJSON(cb){
-    const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json';
-    inp.onchange=()=>{ const f=inp.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ cb(JSON.parse(r.result)); }catch(e){ alert('Invalid JSON'); } }; r.readAsText(f); };
-    inp.click();
-  }
-  function exportReport(){
-    const html = document.documentElement.outerHTML;
-    const blob = new Blob([html],{type:'text/html'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='faceguide_report.html'; a.click();
+  function stopLiveCapture(){
+    if(captureState.stream){ captureState.stream.getTracks().forEach(t=>t.stop()); }
+    captureState.stream = null;
+    captureState.active = false;
+    captureState.naturalWidth = 0;
+    captureState.naturalHeight = 0;
+    if(captureState.rafId){ cancelAnimationFrame(captureState.rafId); captureState.rafId = 0; }
+    captureVideo.srcObject = null;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    freezeBtn.disabled = true;
+    drawOnce();
   }
 
-  // --------- Init ---------
-  function init(){
-    loadMeasurementLocks();
-    buildDropdown();
-    buildLegend();
-    initControls();
-    setActive(activeId);
-    updateCaptureButtons();
-    refreshAll();
+  function freezeCapture(){
+    if(!captureState.active) return;
+    if(captureVideo.readyState < 2) return;
+    const off = document.createElement('canvas');
+    off.width = captureVideo.videoWidth || captureState.naturalWidth || 0;
+    off.height = captureVideo.videoHeight || captureState.naturalHeight || 0;
+    if(!off.width || !off.height) return;
+    const offCtx = off.getContext('2d');
+    offCtx.drawImage(captureVideo, 0, 0, off.width, off.height);
+    try {
+      const dataUrl = off.toDataURL('image/png');
+      if(dataUrl){
+        baseImg.src = dataUrl;
+        baseReady = true;
+        stopLiveCapture();
+      }
+    } catch(err){
+      console.error('Freeze capture failed', err);
+    }
   }
-  init();
 
-})();</script>
+  function loadState(){
+    try {
+      const raw = window.localStorage.getItem(STATE_KEY);
+      if(!raw){
+        statusEl.textContent = 'No saved comparator data found. Use the main page to place landmarks first.';
+        return;
+      }
+      const data = JSON.parse(raw);
+      if(!data || typeof data !== 'object'){ throw new Error('Invalid saved data'); }
+      pointsA = data.pointsA || {};
+      pointsB = data.pointsB || {};
+      const cp = data.controlPoints || {};
+      if(cp.cp1 && cp.cp2 && cp.cp3){ controlIds = [cp.cp1, cp.cp2, cp.cp3]; }
+      if(data.imgA){ refImg.src = data.imgA; } else { statusEl.textContent = 'Target image missing. Upload it on the main page.'; }
+      if(data.imgB){ baseImg.src = data.imgB; baseReady = true; }
+      stateLoaded = true;
+      drawOnce();
+    } catch(err){
+      console.error('Failed to load overlay state', err);
+      statusEl.textContent = 'Unable to load saved data. Refresh or rebuild the comparison on the main page.';
+    }
+  }
+
+  refImg.onload = ()=>{ refReady = true; drawOnce(); };
+  baseImg.onload = ()=>{ baseReady = true; drawOnce(); };
+
+  opacitySlider.addEventListener('input', ()=>{
+    overlayOpacity = clamp(opacitySlider.value, 0, 100) / 100;
+    opacityVal.textContent = Math.round(overlayOpacity*100) + '%';
+    drawOnce();
+  });
+  showPointsChk.addEventListener('change', ()=>{ showPoints = showPointsChk.checked; drawOnce(); });
+  startBtn.addEventListener('click', startLiveCapture);
+  stopBtn.addEventListener('click', stopLiveCapture);
+  freezeBtn.addEventListener('click', freezeCapture);
+  offsetXSlider.addEventListener('input', updateManualFromInputs);
+  offsetYSlider.addEventListener('input', updateManualFromInputs);
+  scaleSlider.addEventListener('input', updateManualFromInputs);
+  rotationSlider.addEventListener('input', updateManualFromInputs);
+  resetAdjustBtn.addEventListener('click', evt=>{ evt.preventDefault(); resetManualAdjustments(); });
+
+  if(window.ResizeObserver){
+    const ro = new ResizeObserver(()=>{ drawOnce(); });
+    ro.observe(wrap);
+  } else {
+    window.addEventListener('resize', drawOnce);
+  }
+
+  loadManualAdjustments();
+  loadState();
+})();
+</script>
 </body>
 </html>
