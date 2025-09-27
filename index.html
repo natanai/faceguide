@@ -501,17 +501,38 @@ th { background: #f7f7f7; }
   }
 
   function renderDots(container, pixelPoints){
-    container.querySelectorAll('.dot').forEach(n=>n.remove());
     const which = container===wrapA ? 'A' : 'B';
-    LANDMARKS.forEach(lm=>{
-      const p=pixelPoints[lm.id]; if(!p) return;
-      const d=document.createElement('div'); d.className='dot';
-      d.style.left=p.x+'px'; d.style.top=p.y+'px'; d.style.background=COLORS[lm.id];
-      d.dataset.id = lm.id;
-      d.dataset.which = which;
-      d.addEventListener('pointerdown', startDragPoint, {once:false});
-      container.appendChild(d);
+    const existing = new Map();
+    container.querySelectorAll('.dot').forEach(el=>{
+      existing.set(el.dataset.id, el);
     });
+    LANDMARKS.forEach(lm=>{
+      const p = pixelPoints[lm.id];
+      const el = existing.get(lm.id);
+      if(p){
+        if(el){
+          el.style.left = p.x + 'px';
+          el.style.top = p.y + 'px';
+          el.style.background = COLORS[lm.id];
+          el.dataset.which = which;
+          existing.delete(lm.id);
+        } else {
+          const d=document.createElement('div');
+          d.className='dot';
+          d.style.left=p.x+'px';
+          d.style.top=p.y+'px';
+          d.style.background=COLORS[lm.id];
+          d.dataset.id = lm.id;
+          d.dataset.which = which;
+          d.addEventListener('pointerdown', startDragPoint, {once:false});
+          container.appendChild(d);
+        }
+      } else if(el){
+        el.remove();
+        existing.delete(lm.id);
+      }
+    });
+    existing.forEach(el=>el.remove());
   }
 
   function startDragPoint(e){
