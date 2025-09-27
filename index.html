@@ -45,7 +45,8 @@ header { margin-bottom: 10px; }
 .wrap { position: relative; width: 100%; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 canvas { display: block; width: 100%; height: auto; }
 .dot { width: 10px; height: 10px; border-radius: 50%; position: absolute; transform: translate(-50%, -50%);
-  border: 2px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; }
+  border: 2px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: auto; cursor: grab; touch-action: none; }
+.dot.dragging { cursor: grabbing; box-shadow: 0 0 0 2px var(--accent); }
 
 /* CAS labels */
 .cas-handle { position: absolute; padding: 2px 6px; border-radius: 999px; border: 1px dashed var(--accent);
@@ -127,6 +128,9 @@ th { background: #f7f7f7; }
       <button id="resetB">Reset B</button>
       <button id="saveB">Save B</button>
       <button id="loadB">Load B</button>
+      <button id="startCapture">Start Live Capture</button>
+      <button id="stopCapture" disabled>Stop Capture</button>
+      <button id="freezeCapture" disabled>Freeze Frame</button>
     </div>
   </section>
 </main>
@@ -134,7 +138,7 @@ th { background: #f7f7f7; }
 <section class="panel">
   <div class="section-title">Comparison & Guidance</div>
   <table id="diffTable">
-    <thead><tr><th>Measurement</th><th>A (target)</th><th>B (sim)</th><th>Δ% (B vs A)</th><th>Guidance</th></tr></thead>
+    <thead><tr><th>Measurement</th><th>A (target)</th><th>B (sim)</th><th>Δ% (B vs A)</th><th>Constraint</th><th>Guidance</th></tr></thead>
     <tbody></tbody>
   </table>
   <p class="small muted">Green ≤3%, Yellow 3–8%, Red &gt;8%.</p>
@@ -146,6 +150,8 @@ th { background: #f7f7f7; }
     <div id="legend" class="legend small"></div>
   </details>
 </section>
+
+<video id="captureVideo" playsinline style="display:none;"></video>
 
 <script>
 (function(){
@@ -283,6 +289,41 @@ th { background: #f7f7f7; }
     { key:"jaw_angle_right", label:"Jaw Angle Right (deg)", fn:p=>jawAngle(p.jaw_right,p.chin_tip), guide:"jaw_angle_right", angular:true }
   ];
 
+  const LIMIT_GUIDANCE = {
+    philtrum: {
+      min: "Marked at its minimum. Raise the nose bridge/philtrum top landmarks to open the space instead.",
+      max: "Marked at its maximum. Lower the philtrum top or lift the mouth landmarks to shorten the gap."
+    },
+    chin_height: {
+      min: "Chin can't go higher—lift mouth landmarks or shorten the philtrum to compensate.",
+      max: "Chin can't go lower—drop the mouth corners or extend the philtrum instead."
+    },
+    nose_bridge_pos: {
+      min: "Bridge already as low as possible. Drop the nose tip or raise the forehead anchor instead.",
+      max: "Bridge already high. Lower the bridge or adjust the forehead anchor to balance the proportion."
+    },
+    lip_thickness: {
+      min: "Lips can't be thinner—raise or lower the lip edges to balance thickness visually.",
+      max: "Lips can't be fuller—shift lip edges inward/outward to simulate added volume."
+    },
+    mouth_width: {
+      min: "Mouth width at minimum. Nudge jaw width or chin width inward to create the perceived reduction.",
+      max: "Mouth width maxed. Expand jaw width or cheek span to give the mouth more room."
+    },
+    jaw_width: {
+      min: "Jaw already narrow. Pull mouth corners inward or reduce chin width for similar effect.",
+      max: "Jaw already wide. Push mouth corners outward or expand cheek span to match."
+    },
+    cheek_span: {
+      min: "Cheek span can't shrink—consider narrowing jaw width or mouth width instead.",
+      max: "Cheek span can't widen—expand jaw width or mouth width for a similar read."
+    },
+    chin_width: {
+      min: "Chin width min. Tighten jaw width or pull mouth corners inward to mimic a narrower chin.",
+      max: "Chin width max. Broaden jaw width or mouth width so the chin feels wider proportionally."
+    }
+  };
+
   // --------- DOM refs ---------
   const $ = id => document.getElementById(id);
   const canA=$('canA'), canB=$('canB'), wrapA=$('wrapA'), wrapB=$('wrapB');
@@ -296,11 +337,30 @@ th { background: #f7f7f7; }
   const legend = $('legend');
   const placedCountEl=$('placedCount'), totalCountEl=$('totalCount'), missingBadge=$('missingBadge');
   const activeDesc=$('activeDesc');
+  const startCaptureBtn=$('startCapture'), stopCaptureBtn=$('stopCapture'), freezeCaptureBtn=$('freezeCapture');
+  const captureVideo=$('captureVideo');
 
   // --------- State ---------
   let imgA = new Image(), imgB = new Image();
   let pointsA = {}, pointsB = {};
   let activeId = LANDMARKS[0].id;
+  let measurementLocks = {};
+  const LOCKS_KEY = 'faceguide_measurementLocks_v1';
+  const storageAvailable = (()=>{
+    try {
+      const k='__fg_test__';
+      window.localStorage.setItem(k,k);
+      window.localStorage.removeItem(k);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  const captureState = { stream:null, rafId:0, active:false, naturalWidth:0, naturalHeight:0 };
+
+  let draggingPoint = null;
+  let draggingPointerId = null;
 
   // --------- Utils ---------
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
@@ -309,6 +369,28 @@ th { background: #f7f7f7; }
   function jawAngle(gonion,chin){ if(!gonion||!chin) return null; const dx=chin.x-gonion.x, dy=chin.y-gonion.y; return Math.round((Math.atan2(dy,dx)*180/Math.PI)*10)/10; }
   function toPixels(points, box){ const out={}; for(const id in points){ const p=points[id]; out[id]={x:p.u*box.w, y:p.v*box.h}; } return out; }
   function avg(arr){ arr = arr.filter(v=>v!=null); if(!arr.length) return null; return arr.reduce((a,b)=>a+b,0)/arr.length; }
+
+  function loadMeasurementLocks(){
+    if(!storageAvailable) return;
+    try {
+      const raw = window.localStorage.getItem(LOCKS_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        if(parsed && typeof parsed === 'object') measurementLocks = parsed;
+      }
+    } catch (e) {
+      measurementLocks = {};
+    }
+  }
+
+  function saveMeasurementLocks(){
+    if(!storageAvailable) return;
+    try {
+      window.localStorage.setItem(LOCKS_KEY, JSON.stringify(measurementLocks));
+    } catch (e) {
+      /* ignore */
+    }
+  }
 
   // --------- Dropdown ---------
   function buildDropdown(){
@@ -385,14 +467,16 @@ th { background: #f7f7f7; }
   }
 
   // --------- Canvas + resize ---------
-  function fitCanvasToContainer(img, wrap, canvas){
+  function fitCanvasToContainer(source, wrap, canvas){
     const containerW = wrap.clientWidth || 1;
-    if(!img.src || !img.naturalWidth || !img.naturalHeight){
+    const naturalW = source && source.naturalWidth;
+    const naturalH = source && source.naturalHeight;
+    if(!naturalW || !naturalH){
       canvas.width=containerW; canvas.height=Math.max(1, Math.floor(containerW*0.75)); return {w:canvas.width,h:canvas.height};
     }
-    const scale = containerW / img.naturalWidth;
-    const w = Math.max(1, Math.round(img.naturalWidth * scale));
-    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const scale = containerW / naturalW;
+    const w = Math.max(1, Math.round(naturalW * scale));
+    const h = Math.max(1, Math.round(naturalH * scale));
     canvas.width = w; canvas.height = h;
     return {w,h};
   }
@@ -418,12 +502,59 @@ th { background: #f7f7f7; }
 
   function renderDots(container, pixelPoints){
     container.querySelectorAll('.dot').forEach(n=>n.remove());
+    const which = container===wrapA ? 'A' : 'B';
     LANDMARKS.forEach(lm=>{
       const p=pixelPoints[lm.id]; if(!p) return;
       const d=document.createElement('div'); d.className='dot';
       d.style.left=p.x+'px'; d.style.top=p.y+'px'; d.style.background=COLORS[lm.id];
+      d.dataset.id = lm.id;
+      d.dataset.which = which;
+      d.addEventListener('pointerdown', startDragPoint, {once:false});
       container.appendChild(d);
     });
+  }
+
+  function startDragPoint(e){
+    e.preventDefault();
+    e.stopPropagation();
+    const target = e.currentTarget;
+    draggingPoint = { id: target.dataset.id, which: target.dataset.which, el: target };
+    draggingPointerId = e.pointerId;
+    target.classList.add('dragging');
+    if(target.setPointerCapture){ try{ target.setPointerCapture(e.pointerId); }catch(err){} }
+  }
+
+  function updateDragPoint(e){
+    if(!draggingPoint || e.pointerId!==draggingPointerId) return;
+    const canvas = draggingPoint.which==='A'?canA:canB;
+    const store = draggingPoint.which==='A'?pointsA:pointsB;
+    const wrap = draggingPoint.which==='A'?wrapA:wrapB;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    store[draggingPoint.id] = {
+      u: clamp(x/(canvas.width||1),0,1),
+      v: clamp(y/(canvas.height||1),0,1)
+    };
+    const pxAll = toPixels(store, {w:canvas.width, h:canvas.height});
+    const selfPx = pxAll[draggingPoint.id];
+    if(selfPx){
+      draggingPoint.el.style.left = selfPx.x + 'px';
+      draggingPoint.el.style.top = selfPx.y + 'px';
+    }
+    renderCASHandles(wrap, pxAll, casLabelModeSel.value, activeId);
+    refreshDiff();
+    refreshProgress();
+  }
+
+  function endDragPoint(e){
+    if(!draggingPoint || e.pointerId!==draggingPointerId) return;
+    if(draggingPoint.el && draggingPoint.el.releasePointerCapture){
+      try{ draggingPoint.el.releasePointerCapture(e.pointerId); }catch(err){}
+    }
+    draggingPoint.el && draggingPoint.el.classList.remove('dragging');
+    draggingPoint = null;
+    draggingPointerId = null;
   }
 
   function redraw(which='both'){
@@ -435,8 +566,15 @@ th { background: #f7f7f7; }
       renderDots(wrapA, px); renderCASHandles(wrapA, px, mode, activeId);
     }
     if(which==='B' || which==='both'){
-      const {w,h} = fitCanvasToContainer(imgB, wrapB, canB);
-      if(w>0 && h>0 && imgB.src){ ctxB.clearRect(0,0,w,h); ctxB.drawImage(imgB, 0,0, w,h); }
+      const source = captureState.active ? captureState : imgB;
+      const {w,h} = fitCanvasToContainer(source, wrapB, canB);
+      if(captureState.active){
+        if(captureVideo.readyState>=2){ ctxB.drawImage(captureVideo, 0,0, w,h); }
+      } else if(w>0 && h>0 && imgB.src){
+        ctxB.clearRect(0,0,w,h); ctxB.drawImage(imgB, 0,0, w,h);
+      } else {
+        ctxB.clearRect(0,0,w,h);
+      }
       const px = toPixels(pointsB, {w:canB.width,h:canB.height});
       renderDots(wrapB, px); renderCASHandles(wrapB, px, mode, activeId);
     }
@@ -447,7 +585,91 @@ th { background: #f7f7f7; }
   if(roA) roA.observe(wrapA); if(roB) roB.observe(wrapB);
   window.addEventListener('resize', ()=>{ redraw('both'); refreshDiff(); refreshProgress(); });
 
+  function updateCaptureButtons(){
+    startCaptureBtn.disabled = captureState.active;
+    stopCaptureBtn.disabled = !captureState.active;
+    freezeCaptureBtn.disabled = !captureState.active;
+  }
+
+  function stopLiveCapture(){
+    if(captureState.stream){
+      captureState.stream.getTracks().forEach(t=>t.stop());
+    }
+    captureState.stream = null;
+    captureState.active = false;
+    captureState.naturalWidth = 0;
+    captureState.naturalHeight = 0;
+    try { captureVideo.pause(); } catch(e){}
+    captureVideo.srcObject = null;
+    if(captureState.rafId){ cancelAnimationFrame(captureState.rafId); captureState.rafId=0; }
+    redraw('B');
+    updateCaptureButtons();
+  }
+
+  function drawCaptureFrame(){
+    if(!captureState.active) return;
+    if(captureVideo.readyState>=2){
+      if(captureState.naturalWidth !== captureVideo.videoWidth || captureState.naturalHeight !== captureVideo.videoHeight){
+        captureState.naturalWidth = captureVideo.videoWidth;
+        captureState.naturalHeight = captureVideo.videoHeight;
+        fitCanvasToContainer(captureState, wrapB, canB);
+        const px = toPixels(pointsB, {w:canB.width,h:canB.height});
+        renderDots(wrapB, px);
+        renderCASHandles(wrapB, px, casLabelModeSel.value, activeId);
+      }
+      ctxB.drawImage(captureVideo, 0, 0, canB.width, canB.height);
+    }
+    captureState.rafId = requestAnimationFrame(drawCaptureFrame);
+  }
+
+  async function startLiveCapture(){
+    if(captureState.active) return;
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
+      alert('Screen capture is not supported in this browser.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
+      captureState.stream = stream;
+      captureState.active = true;
+      captureVideo.srcObject = stream;
+      captureVideo.onloadedmetadata = ()=>{
+        captureVideo.play().catch(()=>{});
+        captureState.naturalWidth = captureVideo.videoWidth;
+        captureState.naturalHeight = captureVideo.videoHeight;
+        fitCanvasToContainer(captureState, wrapB, canB);
+        redraw('B');
+        drawCaptureFrame();
+      };
+      const [videoTrack] = stream.getVideoTracks();
+      if(videoTrack){ videoTrack.addEventListener('ended', stopLiveCapture, {once:true}); }
+      updateCaptureButtons();
+    } catch (err) {
+      console.error('Live capture failed', err);
+      alert('Screen capture failed or was blocked.');
+    }
+  }
+
+  function freezeCapture(){
+    if(!captureState.active) return;
+    try {
+      const dataUrl = canB.toDataURL('image/png');
+      if(dataUrl){
+        imgB = new Image();
+        imgB.onload = ()=>{ redraw('B'); refreshDiff(); };
+        imgB.src = dataUrl;
+      }
+    } catch (e) {
+      console.error('Freeze frame failed', e);
+    }
+    stopLiveCapture();
+  }
+
   // --------- Image I/O ---------
+  startCaptureBtn.addEventListener('click', startLiveCapture);
+  stopCaptureBtn.addEventListener('click', stopLiveCapture);
+  freezeCaptureBtn.addEventListener('click', freezeCapture);
+
   $('imgA').addEventListener('change', e=>{
     const f=e.target.files[0]; if(!f) return;
     imgA.onload=()=>{ redraw('A'); refreshDiff(); refreshProgress(); };
@@ -455,6 +677,7 @@ th { background: #f7f7f7; }
   });
   $('imgB').addEventListener('change', e=>{
     const f=e.target.files[0]; if(!f) return;
+    stopLiveCapture();
     imgB.onload=()=>{ redraw('B'); refreshDiff(); refreshProgress(); };
     imgB.src=URL.createObjectURL(f);
   });
@@ -482,6 +705,9 @@ th { background: #f7f7f7; }
   }
   wrapA.addEventListener('click', e=> placePoint(e, canA, 'A'));
   wrapB.addEventListener('click', e=> placePoint(e, canB, 'B'));
+  window.addEventListener('pointermove', updateDragPoint);
+  window.addEventListener('pointerup', endDragPoint);
+  window.addEventListener('pointercancel', endDragPoint);
 
   // --------- Export / Save/Load ---------
   function exportReport(){
@@ -490,11 +716,11 @@ th { background: #f7f7f7; }
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='faceguide_report.html'; a.click();
   }
   $('resetA').addEventListener('click', ()=>{ pointsA={}; redraw('A'); refreshDiff(); refreshProgress(); });
-  $('resetB').addEventListener('click', ()=>{ pointsB={}; redraw('B'); refreshDiff(); refreshProgress(); });
+  $('resetB').addEventListener('click', ()=>{ stopLiveCapture(); pointsB={}; redraw('B'); refreshDiff(); refreshProgress(); });
   $('saveA').addEventListener('click', ()=> downloadJSON({points:pointsA}, 'landmarks_A.json'));
   $('saveB').addEventListener('click', ()=> downloadJSON({points:pointsB}, 'landmarks_B.json'));
   $('loadA').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ pointsA=obj.points; redraw('A'); refreshDiff(); refreshProgress(); } }));
-  $('loadB').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ pointsB=obj.points; redraw('B'); refreshDiff(); refreshProgress(); } }));
+  $('loadB').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ stopLiveCapture(); pointsB=obj.points; redraw('B'); refreshDiff(); refreshProgress(); } }));
   function downloadJSON(obj, filename){
     const blob = new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
@@ -569,46 +795,83 @@ th { background: #f7f7f7; }
       let B = m.angular ? (m.key.includes('jaw_angle') && symChk.checked ? jawB : b[m.key]) : bn[m.key];
       const delta = (A!=null && B!=null) ? ((B - A) / A * 100) : null;
       const tr=document.createElement('tr');
-      tr.innerHTML = `
-        <td>${m.label}${(symChk.checked && m.key.includes('jaw_angle'))?' (symm.)':''}</td>
-        <td>${fmtVal(A, m.angular)}</td>
-        <td>${fmtVal(B, m.angular)}</td>
-        <td>${fmtDelta(delta)}</td>
-        <td>${guidance(m, A, B, delta, symChk.checked)}</td>
-      `;
+
+      const nameTd=document.createElement('td');
+      nameTd.textContent = m.label + ((symChk.checked && m.key.includes('jaw_angle'))?' (symm.)':'');
+      tr.appendChild(nameTd);
+
+      const aTd=document.createElement('td'); aTd.textContent = fmtVal(A, m.angular);
+      const bTd=document.createElement('td'); bTd.textContent = fmtVal(B, m.angular);
+      const deltaTd=document.createElement('td'); deltaTd.innerHTML = fmtDelta(delta);
+      tr.appendChild(aTd); tr.appendChild(bTd); tr.appendChild(deltaTd);
+
+      const constraintTd=document.createElement('td');
+      const lockSel=document.createElement('select');
+      [
+        {value:'', label:'None'},
+        {value:'min', label:'At Low Limit'},
+        {value:'max', label:'At High Limit'}
+      ].forEach(opt=>{
+        const o=document.createElement('option'); o.value=opt.value; o.textContent=opt.label; lockSel.appendChild(o);
+      });
+      lockSel.value = measurementLocks[m.key] || '';
+      lockSel.addEventListener('change', ()=>{
+        if(lockSel.value){ measurementLocks[m.key]=lockSel.value; }
+        else { delete measurementLocks[m.key]; }
+        saveMeasurementLocks();
+        refreshDiff();
+      });
+      constraintTd.appendChild(lockSel);
+      tr.appendChild(constraintTd);
+
+      const guideTd=document.createElement('td');
+      guideTd.innerHTML = guidance(m, A, B, delta, symChk.checked, measurementLocks[m.key] || null);
+      tr.appendChild(guideTd);
+
       diffBody.appendChild(tr);
     }
   }
 
-  function guidance(m, A, B, delta, symOnly){
+  function guidance(m, A, B, delta, symOnly, lock){
     if(A==null || B==null) return '<span class="muted">Place required landmarks</span>';
     const pct = Math.abs(delta).toFixed(1) + '%';
     const more = delta>0;
+    let base;
     switch(m.guide){
-      case 'eyes_spacing': return more? `Bring eyes ${pct} closer.` : `Space eyes ${pct} farther.`;
-      case 'eye_width':    return more? `Reduce eye width by ${pct}.` : `Increase eye width by ${pct}.`;
-      case 'brow_inner':   return more? `Increase inner brow span by ${pct}.` : `Decrease inner brow span by ${pct}.`;
-      case 'brow_outer':   return more? `Increase outer brow span by ${pct}.` : `Decrease outer brow span by ${pct}.`;
-      case 'nose_bridge':  return more? `Shorten bridge→tip by ${pct}.` : `Lengthen bridge→tip by ${pct}.`;
-      case 'nostril_width':return more? `Narrow nostrils by ${pct}.` : `Widen nostrils by ${pct}.`;
-      case 'philtrum':     return more? `Shorten philtrum by ${pct}.` : `Lengthen philtrum by ${pct}.`;
-      case 'lip_thickness':return more? `Reduce lip thickness by ${pct}.` : `Increase lip thickness by ${pct}.`;
-      case 'mouth_width':  return more? `Narrow mouth by ${pct}.` : `Widen mouth by ${pct}.`;
-      case 'chin_height':  return more? `Reduce chin height by ${pct}.` : `Increase chin height by ${pct}.`;
-      case 'jaw_width':    return more? `Reduce jaw width by ${pct}.` : `Increase jaw width by ${pct}.`;
-      case 'cheek_span':   return more? `Reduce cheekbone span by ${pct}.` : `Increase cheekbone span by ${pct}.`;
-      case 'chin_width':   return more? `Reduce chin width by ${pct}.` : `Increase chin width by ${pct}.`;
-      case 'ear_height':   return more? `Shorten ear height by ${pct}.` : `Increase ear height by ${pct}.`;
-      case 'forehead':     return more? `Lower forehead/raise bridge by ${pct}.` : `Raise forehead/lower bridge by ${pct}.`;
+      case 'eyes_spacing': base = more? `Bring eyes ${pct} closer.` : `Space eyes ${pct} farther.`; break;
+      case 'eye_width':    base = more? `Reduce eye width by ${pct}.` : `Increase eye width by ${pct}.`; break;
+      case 'brow_inner':   base = more? `Increase inner brow span by ${pct}.` : `Decrease inner brow span by ${pct}.`; break;
+      case 'brow_outer':   base = more? `Increase outer brow span by ${pct}.` : `Decrease outer brow span by ${pct}.`; break;
+      case 'nose_bridge':  base = more? `Shorten bridge→tip by ${pct}.` : `Lengthen bridge→tip by ${pct}.`; break;
+      case 'nostril_width':base = more? `Narrow nostrils by ${pct}.` : `Widen nostrils by ${pct}.`; break;
+      case 'philtrum':     base = more? `Shorten philtrum by ${pct}.` : `Lengthen philtrum by ${pct}.`; break;
+      case 'lip_thickness':base = more? `Reduce lip thickness by ${pct}.` : `Increase lip thickness by ${pct}.`; break;
+      case 'mouth_width':  base = more? `Narrow mouth by ${pct}.` : `Widen mouth by ${pct}.`; break;
+      case 'chin_height':  base = more? `Reduce chin height by ${pct}.` : `Increase chin height by ${pct}.`; break;
+      case 'jaw_width':    base = more? `Reduce jaw width by ${pct}.` : `Increase jaw width by ${pct}.`; break;
+      case 'cheek_span':   base = more? `Reduce cheekbone span by ${pct}.` : `Increase cheekbone span by ${pct}.`; break;
+      case 'chin_width':   base = more? `Reduce chin width by ${pct}.` : `Increase chin width by ${pct}.`; break;
+      case 'ear_height':   base = more? `Shorten ear height by ${pct}.` : `Increase ear height by ${pct}.`; break;
+      case 'forehead':     base = more? `Lower forehead/raise bridge by ${pct}.` : `Raise forehead/lower bridge by ${pct}.`; break;
       case 'jaw_angle_left':
       case 'jaw_angle_right':
-        if (symOnly) { return (B>A) ? `Increase jaw angle by ${(B-A).toFixed(1)}°.` : `Decrease jaw angle by ${(A-B).toFixed(1)}°.`; }
+        if (symOnly) { base = (B>A) ? `Increase jaw angle by ${(B-A).toFixed(1)}°.` : `Decrease jaw angle by ${(A-B).toFixed(1)}°.`; }
         else {
           const side = m.guide.endsWith('left')?'left':'right';
-          return (B>A) ? `Increase ${side} jaw angle by ${(B-A).toFixed(1)}°.` : `Decrease ${side} jaw angle by ${(A-B).toFixed(1)}°.`;
+          base = (B>A) ? `Increase ${side} jaw angle by ${(B-A).toFixed(1)}°.` : `Decrease ${side} jaw angle by ${(A-B).toFixed(1)}°.`;
         }
-      default: return '';
+        break;
+      default: base = '';
     }
+    if(lock && delta!=null){
+      if((lock==='min' && more) || (lock==='max' && !more)){
+        const extra = LIMIT_GUIDANCE[m.key]?.[lock] || (lock==='min'
+          ? 'Marked as limited on the low end—adjust nearby landmarks that influence this measurement.'
+          : 'Marked as limited on the high end—adjust neighbouring landmarks that affect this measurement.');
+        base += `<div class="small muted">${extra}</div>`;
+      }
+    }
+    return base;
   }
 
   // --------- Progress ---------
@@ -642,10 +905,12 @@ th { background: #f7f7f7; }
 
   // --------- Init ---------
   function init(){
+    loadMeasurementLocks();
     buildDropdown();
     buildLegend();
     initControls();
     setActive(activeId);
+    updateCaptureButtons();
     refreshAll();
   }
   init();
