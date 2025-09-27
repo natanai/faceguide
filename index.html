@@ -84,17 +84,19 @@ th { background: #f7f7f7; }
       </select>
     </label>
     <div class="controls-compact">
-      <label>Anchor:
-        <select id="anchorSel"></select>
-      </label>
-      <label><input type="checkbox" id="alignChk" checked> 3-point alignment</label>
-      <span class="small muted">Control points:</span>
-      <select id="cp1"></select>
-      <select id="cp2"></select>
-      <select id="cp3"></select>
-      <button id="exportReportBtn">Export Report</button>
-      <span class="small muted">Hotkey: <b>L</b> cycles label mode</span>
-    </div>
+  <label>Anchor:
+    <select id="anchorSel"></select>
+  </label>
+  <label><input type="checkbox" id="alignChk" checked> 3-point alignment</label>
+  <label><input type="checkbox" id="symChk"> Symmetry (average L/R jaw angles)</label>
+  <span class="small muted">Control points:</span>
+  <select id="cp1"></select>
+  <select id="cp2"></select>
+  <select id="cp3"></select>
+  <button id="exportReportBtn">Export Report</button>
+  <span class="small muted">Hotkey: <b>L</b> cycles label mode</span>
+</div>
+
   </div>
 
   <div class="topline">
@@ -287,7 +289,8 @@ th { background: #f7f7f7; }
   const ctxA=canA.getContext('2d'), ctxB=canB.getContext('2d');
   const selCurrent=$('selCurrent'), selSwatch=$('selSwatch'), selName=$('selName'), selDropdown=$('selDropdown');
   const anchorSel=$('anchorSel'), cp1=$('cp1'), cp2=$('cp2'), cp3=$('cp3');
-  const alignChk=$('alignChk'), symChk={checked:false}; // symmetry option omitted in UI for brevity
+  const alignChk=$('alignChk'); 
+  const symChk   = $('symChk');
   const casLabelModeSel=$('casLabelMode');
   const diffBody = $('diffTable').querySelector('tbody');
   const legend = $('legend');
@@ -366,7 +369,7 @@ th { background: #f7f7f7; }
     anchors.forEach(a=>{ const o=document.createElement('option'); o.value=a.id; o.textContent=a.label; anchorSelEl.appendChild(o); });
     anchorSelEl.value='ipd';
 
-    [anchorSelEl, cp1, cp2, cp3, casLabelModeSel, $('exportReportBtn')].forEach(el=>{
+    [anchorSelEl, cp1, cp2, cp3, casLabelModeSel, symChk, $('exportReportBtn')].forEach(el=>{
       el.addEventListener && el.addEventListener('change', refreshAll);
       el.id==='exportReportBtn' && el.addEventListener('click', exportReport);
     });
