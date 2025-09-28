@@ -11,6 +11,8 @@ body { margin: 16px; color: var(--fg); background: var(--bg); font-family: syste
 h1 { font-size: 1.25rem; margin: 0 0 8px; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
+.status-message { display:none; margin-top:8px; padding:8px 10px; border-radius:8px; border:1px solid #ffd2d2; background:#fff5f5; color:#9a1e1e; font-size:12px; }
+.status-message.show { display:block; }
 
 header { margin-bottom: 10px; }
 .panel { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-top: 12px; }
@@ -69,6 +71,7 @@ th { background: #f7f7f7; }
   <h1>FaceGuide — Manual Landmark Comparator</h1>
   <p class="muted">Place and compare landmarks manually across the reference and capture images.</p>
   <p><a href="index.html">← Back to overlay alignment view</a></p>
+  <div id="storageStatus" class="status-message" role="status" aria-live="polite"></div>
 </header>
 
 <section class="panel selector">
@@ -342,6 +345,7 @@ th { background: #f7f7f7; }
   const activeDesc=$('activeDesc');
   const startCaptureBtn=$('startCapture'), stopCaptureBtn=$('stopCapture'), freezeCaptureBtn=$('freezeCapture');
   const captureVideo=$('captureVideo');
+  const storageStatusEl = $('storageStatus');
 
   // --------- State ---------
   let imgA = new Image(), imgB = new Image();
@@ -352,9 +356,15 @@ th { background: #f7f7f7; }
   const SHARED_STATE_KEY = 'faceguide_overlay_state_v1';
   let lastImgADataURL = null;
   let lastImgBDataURL = null;
+  let storedImgADataURL = null;
+  let storedImgBDataURL = null;
+  let preparingImgA = false;
+  let preparingImgB = false;
   let currentViewA = null;
   let currentViewB = null;
   let manualAlignActive = false;
+  const MAX_STORED_EDGE = 1600;
+  const STORED_IMAGE_QUALITY = 0.9;
   const storageAvailable = (()=>{
     try {
       const k='__fg_test__';
@@ -375,6 +385,103 @@ th { background: #f7f7f7; }
   imgB.addEventListener('load', ()=>{ redraw('B'); refreshDiff(); refreshProgress(); persistSharedState(); });
 
   // --------- Utils ---------
+  function updateStorageNotice(msg){
+    if(!storageStatusEl) return;
+    if(msg){
+      storageStatusEl.textContent = msg;
+      storageStatusEl.classList.add('show');
+    } else {
+      storageStatusEl.textContent = '';
+      storageStatusEl.classList.remove('show');
+    }
+  }
+
+  function isQuotaError(err){
+    if(!err) return false;
+    const code = err && err.code;
+    return err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || code === 22 || code === 1014;
+  }
+
+  function createStorageFriendlyDataURL(dataUrl){
+    return new Promise(resolve=>{
+      if(!dataUrl){ resolve(null); return; }
+      const img = new Image();
+      img.onload = ()=>{
+        try {
+          let {width, height} = img;
+          if(!width || !height){ resolve(dataUrl); return; }
+          const longest = Math.max(width, height);
+          let targetW = width;
+          let targetH = height;
+          if(longest > MAX_STORED_EDGE){
+            const scale = MAX_STORED_EDGE / longest;
+            targetW = Math.max(1, Math.round(width * scale));
+            targetH = Math.max(1, Math.round(height * scale));
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+          let chosen = dataUrl;
+          try {
+            const jpeg = canvas.toDataURL('image/jpeg', STORED_IMAGE_QUALITY);
+            if(jpeg && (!dataUrl.startsWith('data:image/jpeg') || jpeg.length <= dataUrl.length)){
+              chosen = jpeg;
+            } else if(targetW !== width || targetH !== height) {
+              const scaled = canvas.toDataURL();
+              if(scaled && scaled.length < dataUrl.length){
+                chosen = scaled;
+              }
+            }
+          } catch(inner){
+            console.warn('JPEG conversion failed, keeping original data URL', inner);
+          }
+          resolve(chosen || dataUrl);
+        } catch(err){
+          console.warn('Failed to optimise image for storage', err);
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = ()=> resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
+  function scheduleStorageImage(which, dataUrl){
+    if(which==='A'){
+      preparingImgA = !!dataUrl;
+      if(!dataUrl){ storedImgADataURL = null; }
+    } else {
+      preparingImgB = !!dataUrl;
+      if(!dataUrl){ storedImgBDataURL = null; }
+    }
+    if(!dataUrl){
+      persistSharedState();
+      return;
+    }
+    createStorageFriendlyDataURL(dataUrl).then(result=>{
+      if(which==='A'){
+        storedImgADataURL = result;
+        preparingImgA = false;
+      } else {
+        storedImgBDataURL = result;
+        preparingImgB = false;
+      }
+      persistSharedState();
+    }).catch(err=>{
+      console.warn('Failed to prepare image for storage', err);
+      if(which==='A'){
+        storedImgADataURL = dataUrl;
+        preparingImgA = false;
+      } else {
+        storedImgBDataURL = dataUrl;
+        preparingImgB = false;
+      }
+      persistSharedState();
+    });
+  }
+
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
   function dist(a,b){ if(!a||!b) return null; const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
   function vDist(a,b){ if(!a||!b) return null; return Math.abs(a.y-b.y); }
@@ -530,17 +637,44 @@ th { background: #f7f7f7; }
 
   function persistSharedState(){
     if(!storageAvailable) return;
+    const basePayload = {
+      pointsA: clonePoints(pointsA),
+      pointsB: clonePoints(pointsB),
+      controlPoints: { cp1: cp1.value, cp2: cp2.value, cp3: cp3.value }
+    };
+    const payload = {
+      ...basePayload,
+      imgA: preparingImgA ? null : (storedImgADataURL ?? null),
+      imgB: preparingImgB ? null : (storedImgBDataURL ?? null),
+      truncated: false,
+      pendingImages: preparingImgA || preparingImgB
+    };
     try {
-      const payload = {
-        pointsA: clonePoints(pointsA),
-        pointsB: clonePoints(pointsB),
-        imgA: lastImgADataURL || null,
-        imgB: lastImgBDataURL || null,
-        controlPoints: { cp1: cp1.value, cp2: cp2.value, cp3: cp3.value }
-      };
       window.localStorage.setItem(SHARED_STATE_KEY, JSON.stringify(payload));
+      if(!(preparingImgA || preparingImgB)){
+        updateStorageNotice('');
+      }
     } catch (err) {
       console.warn('Persist overlay state failed', err);
+      if(isQuotaError(err)){
+        const fallback = {
+          ...basePayload,
+          imgA: null,
+          imgB: null,
+          truncated: true,
+          pendingImages: false
+        };
+        try {
+          window.localStorage.setItem(SHARED_STATE_KEY, JSON.stringify(fallback));
+        } catch (inner) {
+          console.warn('Fallback persist overlay state failed', inner);
+        }
+        storedImgADataURL = null;
+        storedImgBDataURL = null;
+        preparingImgA = false;
+        preparingImgB = false;
+        updateStorageNotice('Images were too large to store for the overlay view. Please upload smaller versions so the overlay page can load them.');
+      }
     }
   }
 
@@ -561,11 +695,26 @@ th { background: #f7f7f7; }
       }
       if(data.imgA){
         lastImgADataURL = data.imgA;
+        storedImgADataURL = data.imgA;
         imgA.src = data.imgA;
+      } else {
+        lastImgADataURL = null;
+        storedImgADataURL = null;
       }
       if(data.imgB){
         lastImgBDataURL = data.imgB;
+        storedImgBDataURL = data.imgB;
         imgB.src = data.imgB;
+      } else {
+        lastImgBDataURL = null;
+        storedImgBDataURL = null;
+      }
+      preparingImgA = false;
+      preparingImgB = false;
+      if(data.truncated){
+        updateStorageNotice('Previously saved images were trimmed because they exceeded browser storage limits. Re-upload smaller files so the overlay can show them.');
+      } else {
+        updateStorageNotice('');
       }
     } catch (err) {
       console.warn('Failed to load overlay state', err);
@@ -930,6 +1079,7 @@ th { background: #f7f7f7; }
       if(dataUrl){
         lastImgBDataURL = dataUrl;
         imgB.src = dataUrl;
+        scheduleStorageImage('B', dataUrl);
       }
     } catch (e) {
       console.error('Freeze frame failed', e);
@@ -950,6 +1100,7 @@ th { background: #f7f7f7; }
       resetAlignment();
       lastImgADataURL = reader.result;
       imgA.src = reader.result;
+      scheduleStorageImage('A', reader.result);
       refreshAll();
       persistSharedState();
     };
@@ -964,6 +1115,7 @@ th { background: #f7f7f7; }
       resetAlignment();
       lastImgBDataURL = reader.result;
       imgB.src = reader.result;
+      scheduleStorageImage('B', reader.result);
       refreshAll();
       persistSharedState();
     };
@@ -975,7 +1127,17 @@ th { background: #f7f7f7; }
     const r = canvas.getBoundingClientRect();
     const x = evt.clientX - r.left, y = evt.clientY - r.top;
     const w = canvas.width || 1, h = canvas.height || 1;
-    const pt = {u: clamp(x/w,0,1), v: clamp(y/h,0,1)};
+    const dims = naturalSize(which);
+    const view = which==='A' ? currentViewA : currentViewB;
+    let u = clamp(x/w,0,1);
+    let v = clamp(y/h,0,1);
+    if(view){
+      const nx = view.x + u * (view.w || 0);
+      const ny = view.y + v * (view.h || 0);
+      u = clamp(nx / (dims.w || 1), 0, 1);
+      v = clamp(ny / (dims.h || 1), 0, 1);
+    }
+    const pt = {u, v};
     if(which==='A') pointsA[activeId]=pt; else pointsB[activeId]=pt;
     redraw(which); refreshDiff(); refreshProgress();
     persistSharedState();

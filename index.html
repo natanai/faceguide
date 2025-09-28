@@ -128,6 +128,8 @@ canvas { display: block; width: 100%; height: auto; }
   let pointsB = {};
   let controlIds = ['left_pupil','right_pupil','nose_tip'];
   let stateLoaded = false;
+  let storageTruncated = false;
+  let pendingImages = false;
   const manualDefaults = {offsetX:0, offsetY:0, scale:1, rotation:0};
   const manualAdjust = {...manualDefaults};
 
@@ -417,6 +419,11 @@ canvas { display: block; width: 100%; height: auto; }
       return;
     }
     const parts = [];
+    if(pendingImages){
+      parts.push('Saved images are still being prepared. Refresh in a moment after returning from the Manual Landmark Setup page.');
+    } else if(storageTruncated){
+      parts.push('Stored images were too large to keep. Re-upload smaller versions on the Manual Landmark Setup page so the overlay can display them.');
+    }
     if(!refReady){ parts.push('Waiting for target image to load.'); }
     if(!baseAvailable){
       parts.push(captureState.active ? 'Waiting for live capture...' : 'No comparison image detected. Start a capture or freeze a frame in the main tool.');
@@ -567,6 +574,10 @@ canvas { display: block; width: 100%; height: auto; }
   }
 
   function loadState(){
+    pendingImages = false;
+    storageTruncated = false;
+    refReady = false;
+    baseReady = false;
     try {
       const raw = window.localStorage.getItem(STATE_KEY);
       if(!raw){
@@ -579,6 +590,8 @@ canvas { display: block; width: 100%; height: auto; }
       pointsB = data.pointsB || {};
       const cp = data.controlPoints || {};
       if(cp.cp1 && cp.cp2 && cp.cp3){ controlIds = [cp.cp1, cp.cp2, cp.cp3]; }
+      pendingImages = !!data.pendingImages;
+      storageTruncated = !!data.truncated;
       if(data.imgA){ refImg.src = data.imgA; } else { statusEl.textContent = 'Target image missing. Upload it on the main page.'; }
       if(data.imgB){ baseImg.src = data.imgB; baseReady = true; }
       stateLoaded = true;
