@@ -95,6 +95,7 @@ th { background: #f7f7f7; }
   <select id="cp1"></select>
   <select id="cp2"></select>
   <select id="cp3"></select>
+  <button id="alignNowBtn" type="button">Align viewfinders with current landmarks</button>
   <button id="exportReportBtn">Export Report</button>
   <span class="small muted">Hotkey: <b>L</b> cycles label mode</span>
 </div>
@@ -331,7 +332,8 @@ th { background: #f7f7f7; }
   const ctxA=canA.getContext('2d'), ctxB=canB.getContext('2d');
   const selCurrent=$('selCurrent'), selSwatch=$('selSwatch'), selName=$('selName'), selDropdown=$('selDropdown');
   const anchorSel=$('anchorSel'), cp1=$('cp1'), cp2=$('cp2'), cp3=$('cp3');
-  const alignChk=$('alignChk'); 
+  const alignChk=$('alignChk');
+  const alignNowBtn=$('alignNowBtn');
   const symChk   = $('symChk');
   const casLabelModeSel=$('casLabelMode');
   const diffBody = $('diffTable').querySelector('tbody');
@@ -344,6 +346,9 @@ th { background: #f7f7f7; }
   // --------- State ---------
   let imgA = new Image(), imgB = new Image();
   let pointsA = {}, pointsB = {};
+  const DRAG_MODE_ID = '__drag__';
+  const DRAG_MODE_DESC = 'Drag existing landmarks to fine-tune their placement without dropping a new point. Choose a landmark to resume placing.';
+  let activeMode = 'place';
   let activeId = LANDMARKS[0].id;
   let measurementLocks = {};
   const LOCKS_KEY = 'faceguide_measurementLocks_v1';
@@ -352,6 +357,7 @@ th { background: #f7f7f7; }
   let lastImgBDataURL = null;
   let currentViewA = null;
   let currentViewB = null;
+  let manualAlignActive = false;
   const storageAvailable = (()=>{
     try {
       const k='__fg_test__';
@@ -477,8 +483,13 @@ th { background: #f7f7f7; }
 
   function updateMatchedView(){
     const shared = LANDMARKS.map(l=>l.id).filter(id=>pointsA[id] && pointsB[id]);
-    if(shared.length < 3){
+    const allPlaced = shared.length === LANDMARKS.length;
+    const shouldAlign = manualAlignActive || allPlaced;
+    if(!shouldAlign || shared.length < 3){
       currentViewA = currentViewB = null;
+      if(!allPlaced){
+        manualAlignActive = manualAlignActive && shared.length >= 3;
+      }
       return;
     }
     const dimsA = naturalSize('A');
@@ -501,6 +512,12 @@ th { background: #f7f7f7; }
     }
     currentViewA = alignBox(boxA, targetW, targetH, dimsA);
     currentViewB = alignBox(boxB, targetW, targetH, dimsB);
+  }
+
+  function resetAlignment(){
+    manualAlignActive = false;
+    currentViewA = null;
+    currentViewB = null;
   }
 
   function renderSpace(which){
@@ -583,6 +600,17 @@ th { background: #f7f7f7; }
   // --------- Dropdown ---------
   function buildDropdown(){
     selDropdown.innerHTML='';
+    const modeGroup=document.createElement('div'); modeGroup.className='group';
+    const modeTitle=document.createElement('div'); modeTitle.className='group-title'; modeTitle.textContent='Modes';
+    modeGroup.appendChild(modeTitle);
+    const dragRow=document.createElement('div'); dragRow.className='item'; dragRow.dataset.mode='drag';
+    const dragSw=document.createElement('span'); dragSw.className='swatch'; dragSw.style.background='#888';
+    const dragName=document.createElement('span'); dragName.className='name'; dragName.textContent='Drag existing landmarks';
+    const dragId=document.createElement('span'); dragId.className='id'; dragId.textContent='mode';
+    dragRow.appendChild(dragSw); dragRow.appendChild(dragName); dragRow.appendChild(dragId);
+    dragRow.addEventListener('click', ()=>{ setActive(DRAG_MODE_ID); toggleDropdown(false); });
+    modeGroup.appendChild(dragRow);
+    selDropdown.appendChild(modeGroup);
     GROUPS.forEach(g=>{
       const group = document.createElement('div'); group.className='group';
       const title = document.createElement('div'); title.className='group-title'; title.textContent=g.name;
@@ -604,6 +632,16 @@ th { background: #f7f7f7; }
   document.addEventListener('click', (e)=>{ if(!selDropdown.contains(e.target) && !selCurrent.contains(e.target)) toggleDropdown(false); });
 
   function setActive(id){
+    if(id === DRAG_MODE_ID){
+      activeMode = 'drag';
+      activeId = null;
+      selSwatch.style.background = '#888';
+      selName.textContent = 'Drag existing landmarks';
+      activeDesc.textContent = DRAG_MODE_DESC;
+      refreshAll();
+      return;
+    }
+    activeMode = 'place';
     activeId = id;
     selSwatch.style.background = COLORS[id];
     const lm = LANDMARKS.find(l=>l.id===id);
@@ -673,6 +711,7 @@ th { background: #f7f7f7; }
   }
 
   function handleForLandmark(id){
+    if(!id) return null;
     for(const h of CAS_HANDLES){ if(h.anchorIds.includes(id)) return h; }
     return null;
   }
@@ -792,7 +831,7 @@ th { background: #f7f7f7; }
         }
       }
       const px = toPixels(pointsA, {w:canA.width,h:canA.height,naturalW:dims.w||1,naturalH:dims.h||1,view});
-      renderDots(wrapA, px); renderCASHandles(wrapA, px, mode, activeId);
+      renderDots(wrapA, px); renderCASHandles(wrapA, px, mode, activeMode==='place'?activeId:null);
     }
     if(which==='B' || which==='both'){
       const source = captureState.active ? captureState : imgB;
@@ -820,7 +859,7 @@ th { background: #f7f7f7; }
         }
       }
       const px = toPixels(pointsB, {w:canB.width,h:canB.height,naturalW:dims.w||1,naturalH:dims.h||1,view});
-      renderDots(wrapB, px); renderCASHandles(wrapB, px, mode, activeId);
+      renderDots(wrapB, px); renderCASHandles(wrapB, px, mode, activeMode==='place'?activeId:null);
     }
   }
 
@@ -866,7 +905,7 @@ th { background: #f7f7f7; }
           view: currentViewB
         });
         renderDots(wrapB, px);
-        renderCASHandles(wrapB, px, casLabelModeSel.value, activeId);
+        renderCASHandles(wrapB, px, casLabelModeSel.value, activeMode==='place'?activeId:null);
       }
       const dims = naturalSize('B');
       const view = currentViewB;
@@ -932,8 +971,12 @@ th { background: #f7f7f7; }
     const f=e.target.files[0]; if(!f) return;
     const reader = new FileReader();
     reader.onload = ()=>{
+      pointsA = {};
+      resetAlignment();
       lastImgADataURL = reader.result;
       imgA.src = reader.result;
+      refreshAll();
+      persistSharedState();
     };
     reader.readAsDataURL(f);
   });
@@ -942,14 +985,21 @@ th { background: #f7f7f7; }
     stopLiveCapture();
     const reader = new FileReader();
     reader.onload = ()=>{
+      pointsB = {};
+      resetAlignment();
       lastImgBDataURL = reader.result;
       imgB.src = reader.result;
+      refreshAll();
+      persistSharedState();
     };
     reader.readAsDataURL(f);
   });
 
   // --------- Placement with auto-advance ---------
   function placePoint(evt, canvas, which){
+    if(activeMode !== 'place' || !activeId){
+      return;
+    }
     const r = canvas.getBoundingClientRect();
     const x = evt.clientX - r.left, y = evt.clientY - r.top;
     const w = canvas.width || 1, h = canvas.height || 1;
@@ -982,12 +1032,17 @@ th { background: #f7f7f7; }
     const blob = new Blob([html],{type:'text/html'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='faceguide_report.html'; a.click();
   }
-  $('resetA').addEventListener('click', ()=>{ pointsA={}; redraw('A'); refreshDiff(); refreshProgress(); persistSharedState(); });
-  $('resetB').addEventListener('click', ()=>{ stopLiveCapture(); pointsB={}; redraw('B'); refreshDiff(); refreshProgress(); persistSharedState(); });
+  $('resetA').addEventListener('click', ()=>{ pointsA={}; resetAlignment(); redraw('A'); refreshDiff(); refreshProgress(); persistSharedState(); });
+  $('resetB').addEventListener('click', ()=>{ stopLiveCapture(); pointsB={}; resetAlignment(); redraw('B'); refreshDiff(); refreshProgress(); persistSharedState(); });
   $('saveA').addEventListener('click', ()=> downloadJSON({points:pointsA}, 'landmarks_A.json'));
   $('saveB').addEventListener('click', ()=> downloadJSON({points:pointsB}, 'landmarks_B.json'));
-  $('loadA').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ pointsA=obj.points; redraw('A'); refreshDiff(); refreshProgress(); persistSharedState(); } }));
-  $('loadB').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ stopLiveCapture(); pointsB=obj.points; redraw('B'); refreshDiff(); refreshProgress(); persistSharedState(); } }));
+  $('loadA').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ pointsA=obj.points; resetAlignment(); redraw('A'); refreshDiff(); refreshProgress(); persistSharedState(); } }));
+  $('loadB').addEventListener('click', ()=> pickJSON(obj=>{ if(obj?.points){ stopLiveCapture(); pointsB=obj.points; resetAlignment(); redraw('B'); refreshDiff(); refreshProgress(); persistSharedState(); } }));
+
+  alignNowBtn.addEventListener('click', ()=>{
+    manualAlignActive = true;
+    refreshAll();
+  });
   function downloadJSON(obj, filename){
     const blob = new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
