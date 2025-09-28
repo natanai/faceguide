@@ -220,14 +220,28 @@ canvas { display: block; width: 100%; height: auto; }
     const sr = Math.sin(r);
     const dx = manualAdjust.offsetX;
     const dy = manualAdjust.offsetY;
-    return {
-      a: s * (cr * base.a - sr * base.b),
-      b: s * (sr * base.a + cr * base.b),
-      c: -s * (cr * base.b + sr * base.a),
-      d: s * (cr * base.a - sr * base.b),
-      e: s * (cr * base.tx - sr * base.ty) + dx,
-      f: s * (sr * base.tx + cr * base.ty) + dy
-    };
+    const baseA = base.a;
+    const baseB = base.b;
+    const baseC = -base.b;
+    const baseD = base.a;
+    const baseE = base.tx;
+    const baseF = base.ty;
+
+    const m00 = s * cr;
+    const m01 = -s * sr;
+    const m02 = dx;
+    const m10 = s * sr;
+    const m11 = s * cr;
+    const m12 = dy;
+
+    const outA = m00 * baseA + m01 * baseB;
+    const outB = m10 * baseA + m11 * baseB;
+    const outC = m00 * baseC + m01 * baseD;
+    const outD = m10 * baseC + m11 * baseD;
+    const outE = m00 * baseE + m01 * baseF + m02;
+    const outF = m10 * baseE + m11 * baseF + m12;
+
+    return { a: outA, b: outB, c: outC, d: outD, e: outE, f: outF };
   }
 
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
@@ -423,6 +437,7 @@ canvas { display: block; width: 100%; height: auto; }
 
   function drawOnce(){
     fitCanvas();
+    ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0,0,canvas.width,canvas.height);
     const dimsB = naturalSize('B');
     updateMatchedView();
